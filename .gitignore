@@ -1,0 +1,7 @@
+*.db
+.config
+swearwords.py
+venv
+__pycache__
+.idea
+Sounds/
