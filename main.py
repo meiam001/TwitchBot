@@ -5,14 +5,18 @@ from sqlalchemy import func, desc
 from playsound import playsound
 from setup import Config
 import requests
+from gtts import gTTS
 import time
 from multiprocessing import Process
 from swearwords import swear_words
 import random
+import os
+from Parsers import get_channel, get_comment, get_user, parse_message, is_valid_comment
 
 timestamp_regex = '\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{6}'
 
 swear_words_regex = '|'.join(swear_words)
+
 
 class TwitchBot(MyDatabase):
     def __init__(self, token, server, port, nick, channel, base_path, dbtype='sqlite'):
@@ -27,9 +31,11 @@ class TwitchBot(MyDatabase):
         :param dbtype:
         """
         self.comment_keywords = {'!ftp': 'My current FTP is 325',
+                            '!SpoonBucks': self.send_stats,
                             '!strava': 'https://www.strava.com/athletes/58350447',
                             '!swearjar': self.swearjar,
                             '!tv': self.tv,
+                            '!rewards': self.rewards,
                             '!chattyboi': self.chatty_boi,
                             '!trainer': 'My trainer is the Saris H3. I love it',
                             '!bike': 'I ride the 2020 Trek Emonda 105 groupset with Reynolds Blacklabel 65 wheels'}
@@ -47,10 +53,10 @@ class TwitchBot(MyDatabase):
         self.port = port
         self.base_path = base_path
         self.nick = nick
-        self.channel = f'#{channel}'
+        self.channel = channel
         self.sock = self._connect()
         self.channel_obj = None
-        if self.channel[1:] == 'slowspoon':
+        if self.channel == 'slowspoon':
             self.my_chat = 1
         else:
             self.my_chat = 0
@@ -59,6 +65,10 @@ class TwitchBot(MyDatabase):
         for user in self.session.query(ActiveUsers):
             self.session.delete(user)
             self.session.commit()
+        self.reward_handler = RewardHandler(
+            base_path=self.base_path, channel=self.channel, session=self.session
+        )
+        self.rewards = ('!tts', )
 
     def main(self):
         """
@@ -73,9 +83,9 @@ class TwitchBot(MyDatabase):
         :return:
         """
         channel_obj = self.session.query(Channels)\
-            .where(Channels.channel==self.channel[1:]).first()
+            .where(Channels.channel==self.channel).first()
         if not channel_obj:
-            channel_obj = Channels(channel=self.channel[1:])
+            channel_obj = Channels(channel=self.channel)
             self.session.add(channel_obj)
         self.session.commit()
 
@@ -97,7 +107,7 @@ class TwitchBot(MyDatabase):
         sock.connect((self.server, self.port))
         sock.send(f"PASS {self.token}\r\n".encode('utf-8'))
         sock.send(f"NICK {self.nick}\r\n".encode('utf-8'))
-        sock.send(f"JOIN {self.channel}\r\n".encode('utf-8'))
+        sock.send(f"JOIN #{self.channel}\r\n".encode('utf-8'))
         return sock
 
     def send_message(self, message: str):
@@ -106,7 +116,7 @@ class TwitchBot(MyDatabase):
         :param message:
         :return:
         """
-        self.sock.send(f'PRIVMSG {self.channel} :{message}\n'.encode('utf-8'))
+        self.sock.send(f'PRIVMSG #{self.channel} :{message}\n'.encode('utf-8'))
 
     def read_chat(self):
         """
@@ -119,14 +129,14 @@ class TwitchBot(MyDatabase):
                 self.sock.send(resp.replace('PING', 'PONG').encode('utf-8'))
                 print('PONGAROO SENT')
             elif len(resp) > 0:
-                message = self._parse_message(resp)
-                if self.is_valid_comment(message):
+                message = parse_message(resp)
+                if is_valid_comment(message):
+                    self.save_chat(message)
                     if self.my_chat:
                         self.respond_to_message(message)
-                    if self.is_not_keyword(message):
-                        self.save_chat(message)
-                        if self.my_chat:
-                            self.send_complement(message)
+                        self.send_complement(message)
+                        if self.reward_handler.main(message) == False:
+                            self.send_message('You don\'t have enough points for that ya silly')
                 print('='*50)
 
     def send_complement(self, message: str):
@@ -136,26 +146,13 @@ class TwitchBot(MyDatabase):
         :return:
         """
         if random.randint(0, 100) < 8:
-            user = self.get_user(message)
+            user = get_user(message)
             complement_index = random.randint(0, len(self.complements)-1)
             complement = self.complements[complement_index].format(user)
             self.send_message(complement)
 
-    @staticmethod
-    def _parse_message(resp: str) -> str:
-        """
-
-        :param resp:
-        :return:
-        """
-        regex_parse = ':([a-zA-Z0-9_]*)\!.*@.*\.tmi\.twitch\.tv PRIVMSG #([a-zA-Z0-9_]*) :(.*)'
-        if re.search(regex_parse, resp):
-            resp = str(resp)
-            print(resp.strip())
-            username, channel, message = re.search(regex_parse, resp).groups()
-            return f"Channel: {channel} \nUsername: {username} \nMessage: {message}"
-        else:
-            return resp
+    def rewards(self, *args):
+        self.send_message('!tts <message> - 10 SpoonBucks')
 
     def respond_to_message(self, message: str):
         """
@@ -163,12 +160,45 @@ class TwitchBot(MyDatabase):
         :param message:
         :return:
         """
-        comment = self.get_comment(message)
+        comment = get_comment(message)
         if comment and comment in self.comment_keywords:
             if isinstance(self.comment_keywords[comment], str):
                 self.send_message(self.comment_keywords[comment])
             else:
                 self.comment_keywords[comment](message)
+
+    def send_stats(self, message):
+        stats = self.get_channel_stats_obj(message)
+        if stats != '0':
+            points = stats.stat_value
+            send_string = f'You have {points} SpoonBucks!'
+        else:
+            send_string = 'You have NO POINTS GET THE FUCK OUT (jk). ' \
+                          'But seriously you have no points, hang out in chat more and ' \
+                          'don\'t forget to keep your volume on.'
+        self.send_message(send_string)
+
+    def get_channel_stats_obj(self, message, stat='channel_points'):
+        user_id = self.session.query(Users)\
+            .where(Users.user==get_user(message))\
+                .first().user_id
+        channel_id = self.session.query(Channels)\
+            .where(Channels.channel==self.channel)\
+                .first().channel_id
+        stats = self.session.query(UserStats)\
+            .where(UserStats.user_id==user_id)\
+            .where(UserStats.stat==stat)\
+            .where(UserStats.channel_id==channel_id).first()
+        if stats:
+            return stats
+        else:
+            stats = UserStats(user_id=user_id, channel_id=channel_id, stat='channel_points', stat_value='0')
+            self.session.add(stats)
+            self.session.commit()
+        return self.session.query(UserStats)\
+            .where(UserStats.user_id==user_id)\
+            .where(UserStats.stat==stat)\
+            .where(UserStats.channel_id==channel_id).first()
 
     def swearjar(self, message: str):
         comment_list = self.get_users_comments(message)
@@ -181,7 +211,7 @@ class TwitchBot(MyDatabase):
         :param message:
         :return:
         """
-        channel = self.get_channel(message)
+        channel = get_channel(message)
         top_commenter = self.session.query(Comments.user_id, func.count(Comments.user_id), Users.user)\
             .join(Users, Users.user_id==Comments.user_id)\
             .join(Channels, Channels.channel_id==Comments.channel_id)\
@@ -220,7 +250,7 @@ class TwitchBot(MyDatabase):
         :param message:
         :return:
         """
-        user = self.get_user(message)
+        user = get_user(message)
         users_comments = self.session.query(Comments)\
             .join(Users, Comments.user_id==Users.user_id)\
             .where(Users.user==user).all()
@@ -240,7 +270,7 @@ class TwitchBot(MyDatabase):
         :param message:
         :return:
         """
-        comment = self.get_comment(message)
+        comment = get_comment(message)
         if comment not in self.comment_keywords and comment not in self.comment_keywords.values():
             return True
         return False
@@ -251,15 +281,16 @@ class TwitchBot(MyDatabase):
         :param message:
         :return:
         """
-        user = self.get_user(message)
-        comment = self.get_comment(message)
-        channel = self.get_channel(message)
+        user = get_user(message)
+        comment = get_comment(message)
+        channel = get_channel(message)
         user_obj = self.session.query(Users).where(Users.user==user).first()
         channel_obj = self.session.query(Channels).where(Channels.channel==channel).first()
         if user_obj:
             self.commit_comment_exists(comment, user_obj, channel_obj)
         else:
-            self.commit_comment_dne(comment, user, user_obj, channel_obj)
+            self.commit_comment_dne(comment, user, channel_obj)
+
 
     def commit_comment_exists(self, comment: str, user_obj: Users, channel_obj: Channels):
         """
@@ -273,82 +304,28 @@ class TwitchBot(MyDatabase):
         self.session.add(comment_obj)
         self.session.commit()
 
-    def commit_comment_dne(self, comment: str, user: str, user_obj: Users, channel_obj: Channels):
+    def commit_comment_dne(self, comment: str, user: str, channel_obj: Channels):
         """
 
         :param comment:
         :param user:
-        :param user_obj:
         :param channel_obj:
         :return:
         """
-        if not user_obj:
-            user_obj = Users(user=user)
-            if self.my_chat:
-                self.send_message(f'It\'s @{user}\'s first time in chat! Say hi!')
-            self.session.add(user_obj)
-            self.session.commit()
-        comment_obj = Comments(comment=comment, user_id=user_obj.user_id, channel_id=channel_obj.channel_id)
+        user_obj = Users(user=user)
+        if self.my_chat:
+            self.send_message(f'It\'s @{user}\'s first time in chat! Say hi!')
+        self.session.add(user_obj)
+        self.session.commit()
+        comment_obj = Comments(
+            comment=comment, user_id=user_obj.user_id, channel_id=channel_obj.channel_id
+        )
+        stats_obj = self.get_stats_obj(user_obj, self.channel, 'channel_points', self.session)
+        stats_obj.stat_value = '0'
+        self.session.add(stats_obj)
         self.session.add(comment_obj)
         self.session.commit()
 
-    def is_valid_comment(self, message: str) -> bool:
-        """
-
-        :param message:
-        :return:
-        """
-        user = self.get_user(message)
-        comment = self.get_comment(message)
-        channel = self.get_channel(message)
-        if user and comment and channel:
-            return True
-        return False
-
-    @staticmethod
-    def get_user(message: str) -> str:
-        """
-
-        :param message:
-        :return:
-        """
-        split_message = message.split('\n')
-        if len(split_message) == 3:
-            message_user = split_message[1]
-            if message_user.startswith('Username: '):
-                user = message_user[len('Username: '):].strip()
-                return user
-        return ''
-
-    @staticmethod
-    def get_comment(message: str) -> str:
-        """
-
-        :param message:
-        :return:
-        """
-        split_message = message.split('\n')
-        if len(split_message) == 3:
-            message_comment = split_message[2]
-            if message_comment.startswith('Message: '):
-                comment = message_comment[len('Message: '):].strip()
-                return comment
-        return ''
-
-    @staticmethod
-    def get_channel(message: str) -> str:
-        """
-
-        :param message:
-        :return:
-        """
-        split_message = message.split('\n')
-        if len(split_message) == 3:
-            message_channel = split_message[0]
-            if message_channel.startswith('Channel: '):
-                channel = message_channel[len('Channel: '):].strip()
-                return channel
-        return ''
 
 class ActiveUserProcess(MyDatabase):
 
@@ -369,7 +346,7 @@ class ActiveUserProcess(MyDatabase):
         self.port = port
         self.base_path = base_path
         self.nick = nick
-        self.channel = f'#{channel}'
+        self.channel = channel
         self.session = None
         self.tb = None
         self.main()
@@ -380,7 +357,7 @@ class ActiveUserProcess(MyDatabase):
         :return:
         """
         self.session = self.get_session(self.db_engine)
-        update_interval = 60
+        update_interval = 5
         while True:
             self._give_chatpoints()
             self._update_active_users()
@@ -391,12 +368,11 @@ class ActiveUserProcess(MyDatabase):
 
         :return:
         """
-        channel_viewers = f'https://tmi.twitch.tv/group/user/{self.channel[1:]}/chatters'
+        channel_viewers = f'https://tmi.twitch.tv/group/user/{self.channel}/chatters'
         r = requests.get(channel_viewers)
         if r.status_code == 200:
             viewer_json = r.json()
             viewers = viewer_json['chatters']['viewers']
-            print(viewers)
             return viewers
         return []
 
@@ -409,7 +385,7 @@ class ActiveUserProcess(MyDatabase):
         stat = 'channel_points'
         for active_user in users:
             if active_user.user_id:
-                stats_obj = self.get_stats_obj(active_user, stat)
+                stats_obj = self.get_stats_obj_(active_user, stat)
                 if not stats_obj.stat_value:
                     stats_obj.stat_value = '1'
                 else:
@@ -418,7 +394,7 @@ class ActiveUserProcess(MyDatabase):
                 self.session.add(stats_obj)
         self.session.commit()
 
-    def get_stats_obj(self, user: Users, stat: str) -> UserStats:
+    def get_stats_obj_(self, user: Users, stat: str) -> UserStats:
         """
 
         :param user:
@@ -426,7 +402,7 @@ class ActiveUserProcess(MyDatabase):
         :return:
         """
         channel = self.session.query(Channels) \
-            .where(Channels.channel == self.channel[1:]).first()
+            .where(Channels.channel == self.channel).first()
         stats_obj = self.session.query(UserStats) \
             .where(UserStats.user_id == user.user_id) \
             .where(UserStats.channel_id == channel.channel_id)\
@@ -462,8 +438,56 @@ class ActiveUserProcess(MyDatabase):
         self.session.commit()
 
 
+class RewardHandler(MyDatabase):
+    def __init__(self, base_path: str, channel: str, session):
+        self.session = session
+        self.base_path = base_path
+        self.channel = channel
+
+    def main(self, message):
+        comment = get_comment(message)
+        if re.match('!tss', comment, flags=re.IGNORECASE):
+            return self.play_sound(message)
+
+    def play_sound(self, message, file_name='user_sound.mp3') -> bool:
+        points_req = 10
+        user = get_user(message)
+        user_obj = self.get_existing_user(user=user, session=self.session)
+        stats_obj = self.get_stats_obj(
+            user=user_obj, channel=self.channel, stat='channel_points', session=self.session
+        )
+        if self.has_enough_points(stats_obj, points_req):
+            comment = get_comment(message)
+            if len(comment) > 4:
+                text = comment[4:].strip()
+            else:
+                text = 'You forgot to add the text! I\'ll take your points anyways sucka'
+            sound = self.save_sound(text, file_name)
+            print('sound path: ', sound)
+            Process(target=playsound, args=(sound,)).start()
+            self.subtract_points(stats_obj, points_req, self.session)
+            self.session.commit()
+            return True
+        self.session.close()
+        return False
+
+    def save_sound(self, text: str, file_name: str) -> str:
+        sound = gTTS(text=text, lang='en', slow=False)
+        file_path = os.path.join(self.base_path, 'Sounds', file_name)
+        sound.save(file_path)
+        return file_path
+
+    def has_enough_points(self, stats_obj: UserStats, points_req: int) -> bool:
+        user_points = int(stats_obj.stat_value)
+        print('points: ', user_points)
+        if user_points > points_req:
+            return True
+        return False
+
+
 if __name__ == '__main__':
     config = Config()
+    config.channel='kyoshirogaming'
     tb = TwitchBot(
         token=config.token, server=config.server,
         port=config.port, nick=config.nick, channel=config.channel, base_path=config.base_path, dbtype=config.dbtype

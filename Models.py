@@ -52,7 +52,7 @@ class MyDatabase:
         dbtype = dbtype.lower()
         if dbtype in self.DB_ENGINE.keys():
             engine_url = self.DB_ENGINE[dbtype].format(DB=dbname)
-            self.db_engine = create_engine(engine_url)
+            self.db_engine = create_engine(engine_url, connect_args={'timeout': 20})
             print(self.db_engine)
         else:
             print("DBType is not found in DB_ENGINE")
@@ -109,8 +109,38 @@ class MyDatabase:
         if folder_name not in os.listdir(path):
             os.mkdir(f'{path}\\{folder_name}')
 
+    def get_stats_obj(self, user: Users, channel: str, stat: str, session) -> UserStats:
+        """
+
+        :param user:
+        :param stat:
+        :return:
+        """
+        channel = session.query(Channels) \
+            .where(Channels.channel == channel).first()
+        stats_obj = session.query(UserStats) \
+            .where(UserStats.user_id == user.user_id) \
+            .where(UserStats.channel_id == channel.channel_id)\
+            .where(UserStats.stat == stat).first()
+        if not stats_obj:
+            stats_obj = UserStats(
+                user_id=user.user_id,
+                channel_id=channel.channel_id,
+                stat=stat
+            )
+        return stats_obj
+
+    def get_existing_user(self, user, session):
+        user = session.query(Users).where(Users.user==user).first()
+        return user
+
+    def subtract_points(self, stats_obj: UserStats, points_to_subtract: int, session):
+        new_point_value = int(stats_obj.stat_value)-points_to_subtract
+        stats_obj.stat_value = str(new_point_value)
+        session.commit()
+
 if __name__ == '__main__':
     pass
     x = MyDatabase('sqlite', dbname='.\\Database\\Chat.db')
     x.create_db_tables()
-    session = Session(x.db_engine)
+    session = x.get_session(x.db_engine)
