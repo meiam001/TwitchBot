@@ -357,7 +357,7 @@ class ActiveUserProcess(MyDatabase):
         :return:
         """
         self.session = self.get_session(self.db_engine)
-        update_interval = 5
+        update_interval = 60
         while True:
             self._give_chatpoints()
             self._update_active_users()
@@ -444,9 +444,12 @@ class RewardHandler(MyDatabase):
         self.base_path = base_path
         self.channel = channel
 
-    def main(self, message):
+    def main(self, message: str):
+        user = get_user(message)
+        if user == 'slowspoon':
+            return
         comment = get_comment(message)
-        if re.match('!tss', comment, flags=re.IGNORECASE):
+        if re.match('!tts', comment, flags=re.IGNORECASE):
             return self.play_sound(message)
 
     def play_sound(self, message, file_name='user_sound.mp3') -> bool:
@@ -487,7 +490,6 @@ class RewardHandler(MyDatabase):
 
 if __name__ == '__main__':
     config = Config()
-    config.channel='kyoshirogaming'
     tb = TwitchBot(
         token=config.token, server=config.server,
         port=config.port, nick=config.nick, channel=config.channel, base_path=config.base_path, dbtype=config.dbtype
