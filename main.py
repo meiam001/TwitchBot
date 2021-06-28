@@ -31,10 +31,10 @@ class TwitchBot(MyDatabase):
         :param dbtype:
         """
         self.comment_keywords = {'!ftp': 'My current FTP is 325',
-                            '!SpoonBucks': self.send_stats,
+                            '!spoonbucks': self.send_stats,
                             '!strava': 'https://www.strava.com/athletes/58350447',
                             '!swearjar': self.swearjar,
-                            '!tv': self.tv,
+                            # '!tv': self.tv,
                             '!rewards': self.rewards,
                             '!chattyboi': self.chatty_boi,
                             '!trainer': 'My trainer is the Saris H3. I love it',
@@ -68,7 +68,6 @@ class TwitchBot(MyDatabase):
         self.reward_handler = RewardHandler(
             base_path=self.base_path, channel=self.channel, session=self.session
         )
-        self.rewards = ('!tts', )
 
     def main(self):
         """
@@ -152,7 +151,8 @@ class TwitchBot(MyDatabase):
             self.send_message(complement)
 
     def rewards(self, *args):
-        self.send_message('!tts <message> - 10 SpoonBucks')
+        # self.send_message('!tts <message> - 10 SpoonBucks')
+        self.send_message('Work in progress, save them SpoonBucks!')
 
     def respond_to_message(self, message: str):
         """
@@ -161,17 +161,20 @@ class TwitchBot(MyDatabase):
         :return:
         """
         comment = get_comment(message)
+        user = get_user(message)
         if comment and comment in self.comment_keywords:
             if isinstance(self.comment_keywords[comment], str):
                 self.send_message(self.comment_keywords[comment])
             else:
                 self.comment_keywords[comment](message)
+        elif re.search('sprint', comment, flags=re.IGNORECASE):
+            self.send_message(f'@{user} shutup nerd')
 
     def send_stats(self, message):
         stats = self.get_channel_stats_obj(message)
         if stats != '0':
             points = stats.stat_value
-            send_string = f'You have {points} SpoonBucks!'
+            send_string = f'You have {points} Spoon Bucks!'
         else:
             send_string = 'You have NO POINTS GET THE FUCK OUT (jk). ' \
                           'But seriously you have no points, hang out in chat more and ' \
@@ -372,8 +375,11 @@ class ActiveUserProcess(MyDatabase):
         r = requests.get(channel_viewers)
         if r.status_code == 200:
             viewer_json = r.json()
+            vips = viewer_json['chatters']['vips']
+            mods = viewer_json['chatters']['moderators']
             viewers = viewer_json['chatters']['viewers']
-            return viewers
+            all_viewers = vips+mods+viewers
+            return all_viewers
         return []
 
     def _give_chatpoints(self):
@@ -446,8 +452,8 @@ class RewardHandler(MyDatabase):
 
     def main(self, message: str):
         user = get_user(message)
-        if user == 'slowspoon':
-            return
+        # if user == 'slowspoon':
+        #     return
         comment = get_comment(message)
         if re.match('!tts', comment, flags=re.IGNORECASE):
             return self.play_sound(message)

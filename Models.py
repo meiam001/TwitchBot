@@ -139,6 +139,7 @@ class MyDatabase:
         stats_obj.stat_value = str(new_point_value)
         session.commit()
 
+
 if __name__ == '__main__':
     pass
     x = MyDatabase('sqlite', dbname='.\\Database\\Chat.db')
