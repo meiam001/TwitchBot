@@ -69,3 +69,15 @@ def is_valid_comment(message: str) -> bool:
     if user and comment and channel:
         return True
     return False
+
+def count_words(comment_list: list, word_list: list) -> int:
+    """
+
+    :param comment_list:
+    :param word_list:
+    :return:
+    """
+    words_regex = '|'.join(word_list)
+    comment_string = '\n'.join([x.comment for x in comment_list])
+    times_sworn = len(re.findall(words_regex, comment_string, flags=re.IGNORECASE))
+    return times_sworn

@@ -134,10 +134,29 @@ class MyDatabase:
         user = session.query(Users).where(Users.user==user).first()
         return user
 
-    def subtract_points(self, stats_obj: UserStats, points_to_subtract: int, session):
+    def subtract_points(self, user, channel, points_to_subtract: int, session):
+        user_obj = self.get_existing_user(user, session=session)
+        stats_obj = self.get_stats_obj(
+            user=user_obj, channel=channel, stat='channel_points', session=session
+        )
         new_point_value = int(stats_obj.stat_value)-points_to_subtract
         stats_obj.stat_value = str(new_point_value)
         session.commit()
+        return stats_obj.stat_value
+
+    def get_users_comments(self, user, channel, session) -> [Comments]:
+        """
+
+        :param message:
+        :return:
+        """
+        channel = session.query(Channels).where(Channels.channel==channel).first()
+        users_comments = session.query(Comments)\
+            .join(Users, Comments.user_id==Users.user_id)\
+            .where(Users.user==user)\
+            .where(Comments.channel_id==channel.channel_id)\
+            .all()
+        return users_comments
 
 
 if __name__ == '__main__':
