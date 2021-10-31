@@ -4,5 +4,6 @@ swearwords.py
 venv
 __pycache__
 .idea
-Sounds/
+Database/*
+Sounds/*
 *.mp3
