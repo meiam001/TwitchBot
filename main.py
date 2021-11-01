@@ -19,6 +19,44 @@ path_to_vlc = r'C:\Program Files\VideoLAN\VLC\vlc.exe'
 
 swear_words_regex = '|'.join(swear_words)
 
+class Cooldowns:
+
+    def __init__(self, tts_global=10, tts_users=180):
+        self.tts_global = tts_global
+        self.tts_user = tts_users
+        self.tts_users_times = {'global': 0}
+
+    def cooldown(self, message, _global: str, _user: str, _times: str) -> str:
+        """
+
+        :param message:
+        :param _global: global cooldown
+        :param _user: user cooldown
+        :param _times: name for user last use time dict
+        :return:
+        """
+        current_time = time.time()
+        _global = getattr(self, _global)  # int representing global cooldown in seconds
+        _user = getattr(self, _user)  # int representing user cooldown in seconds
+        _times = getattr(self, _times)  # dict containing last user use of cooldown {user: time}
+        global_diff = current_time - _times['global']
+        if global_diff > _global:
+            user = get_user(message)
+            if user not in _times:
+                _times[user] = current_time
+                _times['global'] = current_time
+                return ''
+            else:
+                user_diff = current_time - _times[user]
+                if user_diff > _user:
+                    _times[user] = current_time
+                    _times['global'] = current_time
+                    return ''
+                else:
+                    return f'@{user} you still got {_user - int(user_diff)} seconds before you can do that'
+        else:
+            return f'{_global - int(global_diff)} seconds remaining before command available'
+
 class ShoutOuts:
 
     def __init__(self, message: str, seen_today=0, sound='defaultshoutout.mp3'):
@@ -118,8 +156,6 @@ class Sounds:
                        '!discipline': 'discipline.mp3',
                        '!egirl': 'egirl.mp3',
                        '!aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.mp3'}
-        self.tts_time = 0
-        self.user_cooldowns = {} # {username: time.time()}
 
     def __iter__(self):
         return iter(self.sounds.keys())
@@ -192,6 +228,7 @@ class TwitchBot(MyDatabase):
         self.twitch_url = 'https://twitch.tv/'
         self.check_out = f'Check them out at {self.twitch_url}'
         self.sounds = Sounds()
+        self.cooldowns = Cooldowns(tts_global=10, tts_users=180)
         sound_commands = ''
         for sound in self.sounds:
             sound_commands += f'{sound}, '
@@ -417,12 +454,9 @@ class TwitchBot(MyDatabase):
         :return:
         """
         comment = get_comment(message)
-        user = get_user(message)
-        global_cooldown = 10
-        user_cooldown = 180
         if comment.startswith('!tts'):
             current_time = time.time()
-            cooldown = self.cooldown(message, global_cooldown, user_cooldown)
+            cooldown = self.cooldowns.cooldown(message, 'tts_global', 'tts_user', 'tts_users_times')
             if not cooldown:
                 text = ''
                 tts_list = comment.split('!tts')
@@ -434,34 +468,6 @@ class TwitchBot(MyDatabase):
                 self.sounds.tts_time=current_time
             else:
                 self.send_message(cooldown)
-
-    def cooldown(self, message, global_cooldown: int, user_cooldown: int) -> str:
-        """
-        Determines and assigns global and user cooldowns for TTS functions
-        :param message:
-        :param global_cooldown:
-        :param user_cooldown:
-        :return:
-        """
-        current_time = time.time()
-        global_diff = current_time-self.sounds.tts_time
-        if global_diff > global_cooldown:
-            user = get_user(message)
-            if user not in self.sounds.user_cooldowns:
-                self.sounds.user_cooldowns[user] = current_time
-                self.sounds.tts_time = current_time
-                return ''
-            else:
-                user_diff = current_time-self.sounds.user_cooldowns[user]
-                if user_diff > user_cooldown:
-                    self.sounds.user_cooldowns[user] = current_time
-                    self.sounds.tts_time = current_time
-                    return ''
-                else:
-                    return f'@{user} you still got {user_cooldown - int(user_diff)} seconds before you can use text to speech'
-        else:
-            return f'Global text to speech cooldown still has {global_cooldown - int(global_diff)} seconds remaining'
-
 
     def send_stats(self, message):
         stats = self.get_channel_stats_obj(message)
