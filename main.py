@@ -22,6 +22,12 @@ swear_words_regex = '|'.join(swear_words)
 class ShoutOuts:
 
     def __init__(self, message: str, seen_today=0, sound='defaultshoutout.mp3'):
+        """
+
+        :param message:
+        :param seen_today:
+        :param sound:
+        """
         self.seen_today = seen_today
         self.message = message
         self.sound = sound
@@ -55,7 +61,8 @@ streamer_shoutouts = {
     'tepilobium':
         ShoutOuts('The demon of A+ is here!'),
     'ladysirene':
-        ShoutOuts('The beauty of burlesque is here!'),
+        ShoutOuts('The beauty of burlesque is here!',
+                  sound='heygirl.mp3'),
     'pookiebutt':
         ShoutOuts('The bionic man!'),
     'marblehead9':
@@ -68,9 +75,13 @@ streamer_shoutouts = {
     'kyoshirogaming':
         ShoutOuts('Dude takes suffering on the bike to the next level!',
                   sound='kyo.mp3'),
-    'slowspoon':
-        ShoutOuts('testing!'),
-                           }
+    'debbieinshape':
+        ShoutOuts('The beauty of the bike!',
+                  sound='heygirl.mp3')
+    # 'slowspoon':
+    #     ShoutOuts('smoke.mp3', sound='smoke.mp3')
+}
+
 chat_shoutouts = {
     'MC_Squared_Racing'.lower():
         ShoutOuts('Say hi to the world record holder for oldest man to operate a computer @{0}!'),
@@ -83,18 +94,21 @@ chat_shoutouts = {
 }
 
 class Sounds:
+
     def __init__(self):
         """
         Add the file name from the Sounds folder along with desired command here for more sounds
         """
         self.sounds = {'!vomit': 'vomit.mp3',
                        '!stopwhining': 'stop_whining.mp3',
+                       '!kamehameha': 'kamehameha.mp3',
                        '!spoonsproblem': 'premature_ejaculation.mp3',
                        '!daddy': 'daddy.mp3',
                        '!goodbye': 'goodbye.mp3',
                        '!pain': 'struggle.mp3',
                        '!showtime': 'showtime.mp3',
                        '!thug': 'thug.mp3',
+                       '!shit': 'shit.mp3',
                        '!nuclear': 'nuclear.mp3',
                        '!baka': 'baka.mp3',
                        '!ekeseplosion': 'ekeseplosion.mp3',
@@ -105,6 +119,7 @@ class Sounds:
                        '!egirl': 'egirl.mp3',
                        '!aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.mp3'}
         self.tts_time = 0
+        self.user_cooldowns = {} # {username: time.time()}
 
     def __iter__(self):
         return iter(self.sounds.keys())
@@ -117,7 +132,14 @@ class Sounds:
             return True
         return False
 
-    def generate_tts_filename(self, file_name='tts0.mp3'):
+    def generate_tts_filename(self, file_name='tts0.mp3') -> str:
+        """
+        Recursively checks for file names for TTS,
+        If file is currently being played add one and try again.
+        Otherwise delete file and return current file_name
+        :param file_name:
+        :return: str: unused file name for text to speech
+        """
         sounds_path = os.path.join(base_path, 'Sounds')
         sounds_dir = os.listdir(sounds_path)
         if file_name in sounds_dir:
@@ -133,7 +155,7 @@ class Sounds:
 
     def save_tts(self, text: str) -> str:
         """
-        generates a TTS file and returns the file path
+        generates a TTS file and returns the file name
         :param text: desired TTS
         :return: str: file path to tts file
         """
@@ -145,8 +167,8 @@ class Sounds:
 
     def send_sound(self, sound_filename):
         """
-
-        :param sound_filename:
+        PLAYS a sound file using VLC subprocess
+        :param sound_filename: str: filename in Sounds folder
         :return:
         """
         file_path = f'{base_path}\Sounds\{sound_filename}'
@@ -229,7 +251,7 @@ class TwitchBot(MyDatabase):
 
     def check_for_channel(self):
         """
-
+        Checks if channel exists in database, if not create entry for it
         :return:
         """
         channel_obj = self.session.query(Channels)\
@@ -242,7 +264,7 @@ class TwitchBot(MyDatabase):
     @staticmethod
     def _define_commands(comment_keywords: dict) -> str:
         """
-
+        Truncates command keys into a list to return to users
         :param comment_keywords:
         :return:
         """
@@ -260,17 +282,18 @@ class TwitchBot(MyDatabase):
         sock.send(f"JOIN #{self.channel}\r\n".encode('utf-8'))
         return sock
 
-    def send_message(self, message: str):
+    def send_message(self, comment: str):
         """
-
-        :param message:
+        Sends a comment to chat defined in config file
+        :param comment: str: text to be sent
         :return:
         """
-        self.sock.send(f'PRIVMSG #{self.channel} :{message}\n'.encode('utf-8'))
+        self.sock.send(f'PRIVMSG #{self.channel} :{comment}\n'.encode('utf-8'))
 
     def read_chat(self):
         """
-
+        Waits for messages to come into chat
+        Entry point for every text based command
         :return:
         """
         while True:
@@ -295,8 +318,8 @@ class TwitchBot(MyDatabase):
 
     def send_complement(self, message: str):
         """
-
-        :param message:
+        Say a nice thing to chat ~2% of the time
+        :param message: IRC formatted message
         :return:
         """
         if random.randint(0, 100) < 2:
@@ -306,26 +329,37 @@ class TwitchBot(MyDatabase):
             self.send_message(complement)
 
     def send_time(self, *args):
+        """
+        Sends the time of the current machine to chat
+        :param args: dummy var
+        :return:
+        """
         now = datetime.now()
         current_time = now.strftime("%H:%M:%S")
         send_string = f'The current time is {current_time} (west coast US)'
         self.send_message(send_string)
 
     def lurk(self, *args):
+        """
+        Sends a nice lil message to lurkers who let me know
+        :param args:
+        :return:
+        """
         message = args[0]
         user = get_user(message)
         self.send_message(f'Thanks for stopping by @{user}! '
                           f'Remember, my followers are objectively better than other people.')
 
-    def rewards(self, *args):
-        # self.send_message('!tts <message> - 10 SpoonBucks')
-        self.send_message('!wordcount <username> <word or regular expression> - 10 SpoonBucks, '
-                          '!breakaway (Attack from the gun in next race, recorded on GoPro and stream after)'
-                          ' - 1000 SpoonBucks')
+    # def rewards(self, *args):
+    #     # self.send_message('!tts <message> - 10 SpoonBucks')
+    #     self.send_message('!wordcount <username> <word or regular expression> - 10 SpoonBucks, '
+    #                       '!breakaway (Attack from the gun in next race, recorded on GoPro and stream after)'
+    #                       ' - 1000 SpoonBucks')
 
     def respond_to_message(self, message: str):
         """
-
+        Responds to keywords defined in self.comment_keywords
+        And to SPRINT
         :param message:
         :return:
         """
@@ -342,8 +376,8 @@ class TwitchBot(MyDatabase):
 
     def give_shoutout(self, message: str):
         """
-
-        :param message:
+        Certain users frequent my chat, this gives them a shoutout with an audio cue!
+        :param message: IRC formatted message
         :return:
         """
         user = get_user(message)
@@ -365,7 +399,8 @@ class TwitchBot(MyDatabase):
 
     def check_sound(self, message):
         """
-
+        Checks chat to see if sound command was sent
+        Sends it if so
         :param message:
         :return:
         """
@@ -376,13 +411,19 @@ class TwitchBot(MyDatabase):
             self.sounds.send_sound(sound_filename)
 
     def check_tts(self, message):
+        """
+        If user uses !tts command sends it on stream
+        :param message:
+        :return:
+        """
         comment = get_comment(message)
         user = get_user(message)
-        tts_cooldown = 30
+        global_cooldown = 10
+        user_cooldown = 180
         if comment.startswith('!tts'):
             current_time = time.time()
-            tts_diff = current_time - self.sounds.tts_time
-            if tts_diff > tts_cooldown:
+            cooldown = self.cooldown(message, global_cooldown, user_cooldown)
+            if not cooldown:
                 text = ''
                 tts_list = comment.split('!tts')
                 if len(tts_list) > 1:
@@ -392,7 +433,35 @@ class TwitchBot(MyDatabase):
                     self.sounds.send_sound(tts_file_path)
                 self.sounds.tts_time=current_time
             else:
-                self.send_message(f'@{user} {tts_cooldown - int(tts_diff)} seconds till you can do that again')
+                self.send_message(cooldown)
+
+    def cooldown(self, message, global_cooldown: int, user_cooldown: int) -> str:
+        """
+        Determines and assigns global and user cooldowns for TTS functions
+        :param message:
+        :param global_cooldown:
+        :param user_cooldown:
+        :return:
+        """
+        current_time = time.time()
+        global_diff = current_time-self.sounds.tts_time
+        if global_diff > global_cooldown:
+            user = get_user(message)
+            if user not in self.sounds.user_cooldowns:
+                self.sounds.user_cooldowns[user] = current_time
+                self.sounds.tts_time = current_time
+                return ''
+            else:
+                user_diff = current_time-self.sounds.user_cooldowns[user]
+                if user_diff > user_cooldown:
+                    self.sounds.user_cooldowns[user] = current_time
+                    self.sounds.tts_time = current_time
+                    return ''
+                else:
+                    return f'@{user} you still got {user_cooldown - int(user_diff)} seconds before you can use text to speech'
+        else:
+            return f'Global text to speech cooldown still has {global_cooldown - int(global_diff)} seconds remaining'
+
 
     def send_stats(self, message):
         stats = self.get_channel_stats_obj(message)
