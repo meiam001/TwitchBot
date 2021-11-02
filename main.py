@@ -71,6 +71,12 @@ class ShoutOuts:
         self.sound = sound
 
 streamer_shoutouts = {
+    'LepageMaster'.lower():
+        ShoutOuts('This man is bigger than a barge, the real Gaston.',
+                  sound='policeprincess.mp3'),
+    'hardclaws':
+        ShoutOuts('Fuck this guy and his silly accent.',
+                  sound='princess.mp3'),
     'cyclingwithdoc':
         ShoutOuts('The army vet with the mostest is here!',
                   sound='smoke.mp3'),
@@ -133,11 +139,13 @@ chat_shoutouts = {
 
 class Sounds:
 
-    def __init__(self):
+    def __init__(self, base_path):
         """
         Add the file name from the Sounds folder along with desired command here for more sounds
         """
+        self.base_path = base_path
         self.sounds = {'!vomit': 'vomit.mp3',
+                       '!doicare': 'doicare.mp3',
                        '!stopwhining': 'stop_whining.mp3',
                        '!kamehameha': 'kamehameha.mp3',
                        '!spoonsproblem': 'premature_ejaculation.mp3',
@@ -176,7 +184,7 @@ class Sounds:
         :param file_name:
         :return: str: unused file name for text to speech
         """
-        sounds_path = os.path.join(base_path, 'Sounds')
+        sounds_path = os.path.join(self.base_path, 'Sounds')
         sounds_dir = os.listdir(sounds_path)
         if file_name in sounds_dir:
             file_path = os.path.join(sounds_path, file_name)
@@ -197,7 +205,7 @@ class Sounds:
         """
         file_name = self.generate_tts_filename()
         tts = gTTS(text=text, lang='en', tld='com.au')
-        file_path = os.path.join(base_path, 'Sounds', file_name)
+        file_path = os.path.join(self.base_path, 'Sounds', file_name)
         tts.save(file_path)
         return file_name
 
@@ -207,27 +215,53 @@ class Sounds:
         :param sound_filename: str: filename in Sounds folder
         :return:
         """
-        file_path = f'{base_path}\Sounds\{sound_filename}'
+        file_path = f'{self.base_path}\Sounds\{sound_filename}'
         p = Process(target=subprocess.run, args=(
             [path_to_vlc, file_path, '--play-and-exit', '--qt-start-minimized'],)
         )
         p.start()
 
-class TwitchBot(MyDatabase):
-    def __init__(self, token, server, port, nick, channel, base_path, dbtype='sqlite'):
-        """
+class Messaging:
 
-        :param token:
-        :param server:
-        :param port:
-        :param nick:
-        :param channel:
-        :param base_path:
+    def __init__(self, server: str, token: str, nick: str, channel: str, port: str):
+        self.server = server
+        self.token = token
+        self.nick = nick
+        self.channel = channel
+        self.port = port
+        self.sock = self.define_sock()
+
+    @staticmethod
+    def _connect(server, token, nick, channel, port) -> socket.socket:
+        """
+        :return:
+        """
+        sock = socket.socket()
+        sock.connect((server, port))
+        sock.send(f"PASS {token}\r\n".encode('utf-8'))
+        sock.send(f"NICK {nick}\r\n".encode('utf-8'))
+        sock.send(f"JOIN #{channel}\r\n".encode('utf-8'))
+        return sock
+
+    def define_sock(self) -> socket.socket:
+        return self._connect(self.server, self.token, self.nick, self.channel, self.port)
+
+    def send_message(self, comment: str):
+        """
+        Sends a comment to chat defined in config file
+        :param comment: str: text to be sent
+        :return:
+        """
+        self.sock.send(f'PRIVMSG #{self.channel} :{comment}\n'.encode('utf-8'))
+
+class TwitchBot(MyDatabase):
+    def __init__(self, dbtype='sqlite'):
+        """
         :param dbtype:
         """
         self.twitch_url = 'https://twitch.tv/'
         self.check_out = f'Check them out at {self.twitch_url}'
-        self.sounds = Sounds()
+        self.sounds = Sounds(base_path)
         self.cooldowns = Cooldowns(tts_global=10, tts_users=180)
         sound_commands = ''
         for sound in self.sounds:
@@ -258,15 +292,12 @@ class TwitchBot(MyDatabase):
                        ]
         super().__init__(dbtype=dbtype, dbname=f'{base_path}\\Database\\Chat.db')
         self.comment_keywords['!commands'] = self._define_commands(self.comment_keywords)
-        self.token = token
-        self.server = server
-        self.port = port
-        self.base_path = base_path
-        self.nick = nick
-        self.channel = channel
-        self.sock = self._connect()
+        self.messaging = Messaging(
+            channel=config.channel, server=config.server, nick=config.nick, port=config.port, token=config.token
+        )
+        self.sock = self.messaging.sock
         self.channel_obj = None
-        if self.channel == 'slowspoon':
+        if config.channel == 'slowspoon':
             self.my_chat = 1
         else:
             self.my_chat = 0
@@ -276,7 +307,7 @@ class TwitchBot(MyDatabase):
             self.session.delete(user)
             self.session.commit()
         self.reward_handler = RewardHandler(
-            base_path=self.base_path, channel=self.channel, session=self.session
+            base_path=config.base_path, channel=config.channel, session=self.session
         )
 
     def main(self):
@@ -292,9 +323,9 @@ class TwitchBot(MyDatabase):
         :return:
         """
         channel_obj = self.session.query(Channels)\
-            .where(Channels.channel==self.channel).first()
+            .where(Channels.channel==config.channel).first()
         if not channel_obj:
-            channel_obj = Channels(channel=self.channel)
+            channel_obj = Channels(channel=config.channel)
             self.session.add(channel_obj)
         self.session.commit()
 
@@ -307,25 +338,13 @@ class TwitchBot(MyDatabase):
         """
         return ', '.join(list(comment_keywords.keys())+['!tts <message>'])
 
-    def _connect(self) -> socket.socket:
-        """
-
-        :return:
-        """
-        sock = socket.socket()
-        sock.connect((self.server, self.port))
-        sock.send(f"PASS {self.token}\r\n".encode('utf-8'))
-        sock.send(f"NICK {self.nick}\r\n".encode('utf-8'))
-        sock.send(f"JOIN #{self.channel}\r\n".encode('utf-8'))
-        return sock
-
     def send_message(self, comment: str):
         """
         Sends a comment to chat defined in config file
         :param comment: str: text to be sent
         :return:
         """
-        self.sock.send(f'PRIVMSG #{self.channel} :{comment}\n'.encode('utf-8'))
+        self.sock.send(f'PRIVMSG #{config.channel} :{comment}\n'.encode('utf-8'))
 
     def read_chat(self):
         """
@@ -333,25 +352,30 @@ class TwitchBot(MyDatabase):
         Entry point for every text based command
         :return:
         """
+        retry_time = 5
         while True:
-            resp = self.sock.recv(2048).decode('utf-8')
-            if resp.startswith('PING'):
-                self.sock.send(resp.replace('PING', 'PONG').encode('utf-8'))
-                print('PONGAROO SENT')
-            elif len(resp) > 0:
-                message = parse_message(resp)
-                if is_valid_comment(message):
-                    self.save_chat(message)
-                    if self.my_chat:
-                        self.respond_to_message(message)
-                        self.give_shoutout(message)
-                        self.send_complement(message)
-                        self.check_tts(message)
-                        self.check_sound(message)
-                        reward_response = self.reward_handler.main(message)
-                        if reward_response and isinstance(reward_response, str):
-                            self.send_message(reward_response)
-                print('='*50)
+            try:
+                resp = self.sock.recv(2048).decode('utf-8')
+                if resp.startswith('PING'):
+                    self.sock.send(resp.replace('PING', 'PONG').encode('utf-8'))
+                elif len(resp) > 0:
+                    message = parse_message(resp)
+                    if is_valid_comment(message):
+                        self.save_chat(message)
+                        if self.my_chat:
+                            self.respond_to_message(message)
+                            self.give_shoutout(message)
+                            self.send_complement(message)
+                            self.check_tts(message)
+                            self.check_sound(message)
+                            reward_response = self.reward_handler.main(message)
+                            if reward_response and isinstance(reward_response, str):
+                                self.send_message(reward_response)
+                    print('='*50)
+            except Exception as e:
+                print(f'Connection Issue, retrying in {retry_time} seconds\n Exception: {e}\n')
+                time.sleep(5)
+                self.messaging.define_sock()
 
     def send_complement(self, message: str):
         """
@@ -455,7 +479,6 @@ class TwitchBot(MyDatabase):
         """
         comment = get_comment(message)
         if comment.startswith('!tts'):
-            current_time = time.time()
             cooldown = self.cooldowns.cooldown(message, 'tts_global', 'tts_user', 'tts_users_times')
             if not cooldown:
                 text = ''
@@ -465,7 +488,6 @@ class TwitchBot(MyDatabase):
                 if text.strip():
                     tts_file_path = self.sounds.save_tts(text)
                     self.sounds.send_sound(tts_file_path)
-                self.sounds.tts_time=current_time
             else:
                 self.send_message(cooldown)
 
@@ -485,7 +507,7 @@ class TwitchBot(MyDatabase):
             .where(Users.user==get_user(message))\
                 .first().user_id
         channel_id = self.session.query(Channels)\
-            .where(Channels.channel==self.channel)\
+            .where(Channels.channel==config.channel)\
                 .first().channel_id
         stats = self.session.query(UserStats)\
             .where(UserStats.user_id==user_id)\
@@ -504,7 +526,7 @@ class TwitchBot(MyDatabase):
 
     def swearjar(self, message: str):
         user = get_user(message)
-        channel = self.channel
+        channel = config.channel
         comment_list = self.get_users_comments(user=user, channel=channel,session=self.session)
         times_sworn = count_words(comment_list, swear_words)
         swear_ratio = str(times_sworn/len(comment_list))
@@ -600,7 +622,7 @@ class TwitchBot(MyDatabase):
         comment_obj = Comments(
             comment=comment, user_id=user_obj.user_id, channel_id=channel_obj.channel_id
         )
-        stats_obj = self.get_stats_obj(user_obj, self.channel, 'channel_points', self.session)
+        stats_obj = self.get_stats_obj(user_obj, config.channel, 'channel_points', self.session)
         stats_obj.stat_value = '0'
         self.session.add(stats_obj)
         self.session.add(comment_obj)
@@ -612,7 +634,6 @@ class ActiveUserProcess(MyDatabase):
     def __init__(self, token, server,
                        port, nick, channel, base_path, dbtype='sqlite'):
         """
-
         :param token:
         :param server:
         :param port:
@@ -627,6 +648,10 @@ class ActiveUserProcess(MyDatabase):
         self.base_path = base_path
         self.nick = nick
         self.channel = channel
+        self.sounds = Sounds(self.base_path)
+        self.messaging = self.messaging = Messaging(
+            channel=self.channel, server=self.server, nick=self.nick, port=self.port, token=self.token
+        )
         self.session = None
         self.tb = None
         self.main()
@@ -639,14 +664,28 @@ class ActiveUserProcess(MyDatabase):
         self.session = self.get_session(self.db_engine)
         update_interval = 60
         time_streamed = 0
+        intervals_for_ad = 10
         while True:
             self._give_chatpoints()
             self._update_active_users()
             time.sleep(update_interval)
+            if time_streamed%(intervals_for_ad*update_interval)==0:
+                self.send_info()
             time_streamed += update_interval
-            if time_streamed%600==0:
-                #TODO seperate out the messaging shit so i can use it here to periodically send messages
-                pass
+
+    def send_info(self):
+        """
+        Send stream info periodically
+        :return:
+        """
+        message = '!commands to see all the fun shit you can do. Don\'t forget to follow!'
+        try:
+            self.sounds.send_sound('follow.mp3')
+            self.messaging.send_message(message)
+            print('Sent ad')
+        except Exception as e:
+            print(f'Exception: {e}\n')
+            self.messaging.define_sock()
 
     def _get_current_viewers(self) -> [str]:
         """
@@ -828,12 +867,6 @@ if __name__ == '__main__':
     config = Config()
     base_path = config.base_path
     tb = TwitchBot(
-        token=config.token,
-        server=config.server,
-        port=config.port,
-        nick=config.nick,
-        channel=config.channel,
-        base_path=config.base_path,
         dbtype=config.dbtype
     )
     p = Process(target=ActiveUserProcess, kwargs={"token":config.token, "server":config.server,
