@@ -1,7 +1,9 @@
 from sqlalchemy import Column, Integer, String, ForeignKey, Table, DATETIME, create_engine, MetaData, Float
 from sqlalchemy.orm import Session
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.sql import func, desc
+from sqlalchemy.sql import func
+from Parsers import get_channel, get_user
+import time
 import os
 
 Base = declarative_base()
@@ -40,6 +42,16 @@ class Comments(Base):
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
     channel_id = Column(Integer, ForeignKey('channels.channel_id'), nullable=False)
     comment = Column(String)
+    created = Column(DATETIME, default=func.now())
+
+class Cooldowns(Base):
+    __tablename__='cooldowns'
+    cooldowns_id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.user_id'))
+    channel_id = Column(Integer, ForeignKey('channels.channel_id'), nullable=False)
+    cd_type = Column(String)
+    length = Column(Integer)
+    last_used = Column(Float)
     created = Column(DATETIME, default=func.now())
 
 class MyDatabase:
@@ -98,6 +110,15 @@ class MyDatabase:
                          Column('channel', String, nullable=False),
                          Column('created', DATETIME, default=func.now())
                          )
+        cooldowns = Table('cooldowns', metadata,
+                            Column('cooldowns_id', Integer, primary_key=True),
+                            Column('user_id', Integer, ForeignKey('users.user_id')),
+                            Column('channel_id', Integer, ForeignKey('channels.channel_id'), nullable=False),
+                            Column('cd_type', String),
+                            Column('last_used', Float),
+                            Column('length', Integer),
+                            Column('created', DATETIME, default=func.now())
+                          )
         try:
             metadata.create_all(self.db_engine)
             print("Tables created")
@@ -108,6 +129,41 @@ class MyDatabase:
     def create_folder(self, path: str, folder_name: str):
         if folder_name not in os.listdir(path):
             os.mkdir(f'{path}\\{folder_name}')
+
+
+    def get_gcd(self, message, session, gcd=10) -> Cooldowns:
+        channel = get_channel(message)
+        cooldown_object = session.query(Cooldowns)\
+            .join(Channels, Channels.channel_id == Cooldowns.channel_id) \
+            .where(Channels.channel == channel)\
+            .where(Cooldowns.cd_type == 'Global')\
+            .first()
+        if not cooldown_object:
+            user = get_user(message)
+            user_id = self.get_existing_user(user, session).user_id
+            cooldown_object = self.insert_cooldown(message, session, gcd, user_id, 'Global')
+        return cooldown_object
+
+    def insert_cooldown(self, message: str, session, cd_length, user_id, cd_type) -> Cooldowns:
+        channel = self.get_channel_obj(message, session)
+        cooldown_object = Cooldowns(channel_id=channel.channel_id,
+                                    user_id=user_id,
+                                    cd_type=cd_type,
+                                    last_used=time.time(),
+                                    length=cd_length)
+        session.add(cooldown_object)
+        session.commit()
+        return cooldown_object
+
+    def update_gcd(self, current_time, session, message):
+        gcd_obj = self.get_gcd(message, session)
+        gcd_obj.last_used = current_time
+        # session.add(gcd_obj)
+        session.commit()
+
+    def get_channel_obj(self, message, session) -> Channels:
+        channel_name = get_channel(message)
+        return session.query(Channels).where(Channels.channel==channel_name).first()
 
     def get_stats_obj(self, user: Users, channel: str, stat: str, session) -> UserStats:
         """
@@ -130,7 +186,7 @@ class MyDatabase:
             )
         return stats_obj
 
-    def get_existing_user(self, user, session):
+    def get_existing_user(self, user: str, session) -> Users:
         user = session.query(Users).where(Users.user==user).first()
         return user
 
@@ -146,8 +202,6 @@ class MyDatabase:
 
     def get_users_comments(self, user, channel, session) -> [Comments]:
         """
-
-        :param message:
         :return:
         """
         channel = session.query(Channels).where(Channels.channel==channel).first()
@@ -163,4 +217,4 @@ if __name__ == '__main__':
     pass
     x = MyDatabase('sqlite', dbname='.\\Database\\Chat.db')
     x.create_db_tables()
-    session = x.get_session(x.db_engine)
+    sesh = x.get_session(x.db_engine)

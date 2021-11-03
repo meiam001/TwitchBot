@@ -19,43 +19,45 @@ path_to_vlc = r'C:\Program Files\VideoLAN\VLC\vlc.exe'
 
 swear_words_regex = '|'.join(swear_words)
 
-class Cooldowns:
+class Cooldowns(MyDatabase):
 
     def __init__(self, tts_global=10, tts_users=180):
+        super().__init__(dbtype='sqlite', dbname=f'{base_path}\\Database\\Chat.db')
+        self.session = self.get_session(self.db_engine)
         self.tts_global = tts_global
         self.tts_user = tts_users
         self.tts_users_times = {'global': 0}
 
-    def cooldown(self, message, _global: str, _user: str, _times: str) -> str:
+    def cooldown(self, message, _user: str, _times: str) -> str:
         """
 
         :param message:
-        :param _global: global cooldown
         :param _user: user cooldown
         :param _times: name for user last use time dict
         :return:
         """
         current_time = time.time()
-        _global = getattr(self, _global)  # int representing global cooldown in seconds
+        cooldown_obj = self.get_gcd(message, self.session)  # int representing global cooldown in seconds
+        # _global = None
         _user = getattr(self, _user)  # int representing user cooldown in seconds
         _times = getattr(self, _times)  # dict containing last user use of cooldown {user: time}
-        global_diff = current_time - _times['global']
-        if global_diff > _global:
+        global_diff = current_time - cooldown_obj.last_used
+        if global_diff > cooldown_obj.length:
             user = get_user(message)
             if user not in _times:
                 _times[user] = current_time
-                _times['global'] = current_time
+                self.update_gcd(current_time, self.session, message)
                 return ''
             else:
                 user_diff = current_time - _times[user]
                 if user_diff > _user:
                     _times[user] = current_time
-                    _times['global'] = current_time
+                    self.update_gcd(current_time, self.session, message)
                     return ''
                 else:
                     return f'@{user} you still got {_user - int(user_diff)} seconds before you can do that'
         else:
-            return f'{_global - int(global_diff)} seconds remaining before command available'
+            return f'{cooldown_obj.length - int(global_diff)} seconds remaining before command available'
 
 class ShoutOuts:
 
@@ -253,6 +255,7 @@ class Messaging:
         :return:
         """
         self.sock.send(f'PRIVMSG #{self.channel} :{comment}\n'.encode('utf-8'))
+
 
 class TwitchBot(MyDatabase):
     def __init__(self, dbtype='sqlite'):
@@ -479,7 +482,7 @@ class TwitchBot(MyDatabase):
         """
         comment = get_comment(message)
         if comment.startswith('!tts'):
-            cooldown = self.cooldowns.cooldown(message, 'tts_global', 'tts_user', 'tts_users_times')
+            cooldown = self.cooldowns.cooldown(message, 'tts_user', 'tts_users_times')
             if not cooldown:
                 text = ''
                 tts_list = comment.split('!tts')
@@ -628,7 +631,6 @@ class TwitchBot(MyDatabase):
         self.session.add(comment_obj)
         self.session.commit()
 
-
 class ActiveUserProcess(MyDatabase):
 
     def __init__(self, token, server,
@@ -649,7 +651,7 @@ class ActiveUserProcess(MyDatabase):
         self.nick = nick
         self.channel = channel
         self.sounds = Sounds(self.base_path)
-        self.messaging = self.messaging = Messaging(
+        self.messaging = Messaging(
             channel=self.channel, server=self.server, nick=self.nick, port=self.port, token=self.token
         )
         self.session = None
@@ -658,7 +660,6 @@ class ActiveUserProcess(MyDatabase):
 
     def main(self):
         """
-
         :return:
         """
         self.session = self.get_session(self.db_engine)
