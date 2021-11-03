@@ -139,17 +139,24 @@ class MyDatabase:
             .where(Cooldowns.cd_type == 'Global')\
             .first()
         if not cooldown_object:
-            user = get_user(message)
-            user_id = self.get_existing_user(user, session).user_id
-            cooldown_object = self.insert_cooldown(message, session, gcd, user_id, 'Global')
+            cooldown_object = self.insert_cooldown(message, session, gcd, 'Global')
         return cooldown_object
 
-    def insert_cooldown(self, message: str, session, cd_length, user_id, cd_type) -> Cooldowns:
+    def get_cooldown_obj(self, message, cd_type, cd_length, session):
+        user = get_user(message)
+        user_obj = self.get_user_obj(user, session)
+        cooldown_obj = session.query(Cooldowns)\
+            .where(Cooldowns.user_id==user_obj.user_id).where(Cooldowns.cd_type==cd_type).first()
+        if not cooldown_obj:
+            cooldown_obj = self.insert_cooldown(message, session, cd_length, cd_type, user_obj.user_id)
+        return cooldown_obj
+
+    def insert_cooldown(self, message: str, session, cd_length, cd_type, user_id=None) -> Cooldowns:
         channel = self.get_channel_obj(message, session)
         cooldown_object = Cooldowns(channel_id=channel.channel_id,
                                     user_id=user_id,
                                     cd_type=cd_type,
-                                    last_used=time.time(),
+                                    last_used=0,
                                     length=cd_length)
         session.add(cooldown_object)
         session.commit()
@@ -158,7 +165,10 @@ class MyDatabase:
     def update_gcd(self, current_time, session, message):
         gcd_obj = self.get_gcd(message, session)
         gcd_obj.last_used = current_time
-        # session.add(gcd_obj)
+        session.commit()
+
+    def update_user_cd(self, cooldown_obj, current_time, session):
+        cooldown_obj.last_used = current_time
         session.commit()
 
     def get_channel_obj(self, message, session) -> Channels:
@@ -186,12 +196,16 @@ class MyDatabase:
             )
         return stats_obj
 
-    def get_existing_user(self, user: str, session) -> Users:
+    def get_user_obj(self, user: str, session) -> Users:
         user = session.query(Users).where(Users.user==user).first()
+        if not user:
+            user = Users(user)
+            session.add(user)
+            session.commit()
         return user
 
     def subtract_points(self, user, channel, points_to_subtract: int, session):
-        user_obj = self.get_existing_user(user, session=session)
+        user_obj = self.get_user_obj(user, session=session)
         stats_obj = self.get_stats_obj(
             user=user_obj, channel=channel, stat='channel_points', session=session
         )

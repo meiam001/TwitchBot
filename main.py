@@ -6,6 +6,7 @@ import subprocess
 from setup import Config
 import requests
 from gtts import gTTS
+import traceback
 import time
 from multiprocessing import Process
 from swearwords import swear_words
@@ -28,36 +29,30 @@ class Cooldowns(MyDatabase):
         self.tts_user = tts_users
         self.tts_users_times = {'global': 0}
 
-    def cooldown(self, message, _user: str, _times: str) -> str:
+    def cooldown(self, message, cd_type: str, _times: str) -> str:
         """
 
         :param message:
-        :param _user: user cooldown
-        :param _times: name for user last use time dict
+        :param cd_type:
+        :param _times:
         :return:
         """
         current_time = time.time()
-        cooldown_obj = self.get_gcd(message, self.session)  # int representing global cooldown in seconds
-        # _global = None
-        _user = getattr(self, _user)  # int representing user cooldown in seconds
-        _times = getattr(self, _times)  # dict containing last user use of cooldown {user: time}
-        global_diff = current_time - cooldown_obj.last_used
-        if global_diff > cooldown_obj.length:
+        gcd_cooldown_obj = self.get_gcd(message, self.session)
+        length = getattr(self, cd_type)
+        cooldown_obj = self.get_cooldown_obj(message, cd_type, length, self.session)
+        global_diff = current_time - gcd_cooldown_obj.last_used
+        if global_diff > gcd_cooldown_obj.length:
             user = get_user(message)
-            if user not in _times:
-                _times[user] = current_time
+            user_diff = current_time - cooldown_obj.last_used
+            if user_diff > length:
+                self.update_user_cd(cooldown_obj, current_time, self.session)
                 self.update_gcd(current_time, self.session, message)
                 return ''
             else:
-                user_diff = current_time - _times[user]
-                if user_diff > _user:
-                    _times[user] = current_time
-                    self.update_gcd(current_time, self.session, message)
-                    return ''
-                else:
-                    return f'@{user} you still got {_user - int(user_diff)} seconds before you can do that'
+                return f'@{user} you still got {length - int(user_diff)} seconds before you can do that'
         else:
-            return f'{cooldown_obj.length - int(global_diff)} seconds remaining before command available'
+            return f'{gcd_cooldown_obj.length - int(global_diff)} seconds remaining before command available'
 
 class ShoutOuts:
 
@@ -376,7 +371,7 @@ class TwitchBot(MyDatabase):
                                 self.send_message(reward_response)
                     print('='*50)
             except Exception as e:
-                print(f'Connection Issue, retrying in {retry_time} seconds\n Exception: {e}\n')
+                traceback.print_exc()
                 time.sleep(5)
                 self.messaging.define_sock()
 
@@ -685,7 +680,7 @@ class ActiveUserProcess(MyDatabase):
             self.messaging.send_message(message)
             print('Sent ad')
         except Exception as e:
-            print(f'Exception: {e}\n')
+            traceback.print_exc()
             self.messaging.define_sock()
 
     def _get_current_viewers(self) -> [str]:
@@ -818,7 +813,7 @@ class RewardHandler(MyDatabase):
         if len(split_comment) != 3:
             return 'Naaaa ya goof the format is "!wordcount <valid username> <word>"'
         target_user = split_comment[1]
-        target_user_obj = self.get_existing_user(target_user, self.session)
+        target_user_obj = self.get_user_obj(target_user, self.session)
         if not target_user_obj:
             return f'Naa ya goof, {target_user} isn\'t a valid username!'
         if self.has_enough_points(message, points_req):
@@ -837,7 +832,7 @@ class RewardHandler(MyDatabase):
         user = get_user(message)
         return_response = 'You don\'t have enough points for that ya silly'
         if self.has_enough_points(message, points_req):
-            target_user = self.get_existing_user(self.channel, self.session)
+            target_user = self.get_user_obj(self.channel, self.session)
             stats_obj = self.get_stats_obj(target_user, self.channel, '!breakaway', self.session)
             if not stats_obj.stat_value:
                 stats_obj.stat_value = '1'
