@@ -1,10 +1,8 @@
 import socket
 import re
 from Models import Users, Comments, Channels, MyDatabase, ActiveUsers, UserStats
-from sqlalchemy import func, desc
 import subprocess
 from setup import Config
-import requests
 from gtts import gTTS
 import traceback
 import time
@@ -372,7 +370,7 @@ class TwitchBot(MyDatabase):
                     print('='*50)
             except Exception as e:
                 traceback.print_exc()
-                time.sleep(5)
+                time.sleep(retry_time)
                 self.messaging.define_sock()
 
     def send_complement(self, message: str):
@@ -495,7 +493,7 @@ class TwitchBot(MyDatabase):
             points = stats.stat_value
             send_string = f'You have {points} Spoon Bucks!'
         else:
-            send_string = 'You have NO POINTS GET THE FUCK OUT (jk). ' \
+            send_string = 'You have NO POINTS GET THE F*CK OUT (jk). ' \
                           'But seriously you have no points, hang out in chat more and ' \
                           'don\'t forget to keep your volume on.'
         self.send_message(send_string)
@@ -525,7 +523,7 @@ class TwitchBot(MyDatabase):
     def swearjar(self, message: str):
         user = get_user(message)
         channel = config.channel
-        comment_list = self.get_users_comments(user=user, channel=channel,session=self.session)
+        comment_list = self.get_users_comments(user=user, channel=channel, session=self.session)
         times_sworn = count_words(comment_list, swear_words)
         swear_ratio = str(times_sworn/len(comment_list))
         if len(swear_ratio) >= 4:
@@ -540,14 +538,7 @@ class TwitchBot(MyDatabase):
         :return:
         """
         channel = get_channel(message)
-        top_commenters = self.session.query(Comments.user_id, func.count(Comments.user_id), Users.user)\
-            .join(Users, Users.user_id==Comments.user_id)\
-            .join(Channels, Channels.channel_id==Comments.channel_id)\
-            .where(Channels.channel==channel)\
-            .where(Users.user!='slowspoon')\
-            .group_by(Comments.user_id)\
-            .order_by(desc(func.count(Comments.user_id)))\
-            .limit(3).all()
+        top_commenters = self.get_top_commenters(session=self.session, limit=3, channel=channel)
         number1 = top_commenters[0]
         number2 = top_commenters[1]
         number3 = top_commenters[2]
@@ -561,7 +552,10 @@ class TwitchBot(MyDatabase):
         :param message:
         :return:
         """
-        self.write_message(message)
+        return_comment = self.write_message(message, self.session)
+        if self.my_chat and return_comment:
+            self.send_message(return_comment)
+            self.sounds.send_sound('cheering.mp3')
 
     def is_not_keyword(self, message: str) -> bool:
         """
@@ -574,57 +568,6 @@ class TwitchBot(MyDatabase):
             return True
         return False
 
-    def write_message(self, message: str):
-        """
-
-        :param message:
-        :return:
-        """
-        user = get_user(message)
-        comment = get_comment(message)
-        channel = get_channel(message)
-        user_obj = self.session.query(Users).where(Users.user==user).first()
-        channel_obj = self.session.query(Channels).where(Channels.channel==channel).first()
-        if user_obj:
-            self.commit_comment_exists(comment, user_obj, channel_obj)
-        else:
-            self.commit_comment_dne(comment, user, channel_obj)
-
-
-    def commit_comment_exists(self, comment: str, user_obj: Users, channel_obj: Channels):
-        """
-
-        :param comment:
-        :param user_obj:
-        :param channel_obj:
-        :return:
-        """
-        comment_obj = Comments(comment=comment, user_id=user_obj.user_id, channel_id=channel_obj.channel_id)
-        self.session.add(comment_obj)
-        self.session.commit()
-
-    def commit_comment_dne(self, comment: str, user: str, channel_obj: Channels):
-        """
-
-        :param comment:
-        :param user:
-        :param channel_obj:
-        :return:
-        """
-        user_obj = Users(user=user)
-        if self.my_chat:
-            self.send_message(f'It\'s @{user}\'s first time in chat! Say hi! (And don\'t forget to follow :D)')
-            self.sounds.send_sound('cheering.mp3')
-        self.session.add(user_obj)
-        self.session.commit()
-        comment_obj = Comments(
-            comment=comment, user_id=user_obj.user_id, channel_id=channel_obj.channel_id
-        )
-        stats_obj = self.get_stats_obj(user_obj, config.channel, 'channel_points', self.session)
-        stats_obj.stat_value = '0'
-        self.session.add(stats_obj)
-        self.session.add(comment_obj)
-        self.session.commit()
 
 class ActiveUserProcess(MyDatabase):
 
@@ -662,8 +605,8 @@ class ActiveUserProcess(MyDatabase):
         time_streamed = 0
         intervals_for_ad = 10
         while True:
-            self._give_chatpoints()
-            self._update_active_users()
+            self._give_chatpoints(session=self.session, channel=self.channel)
+            self._update_active_users(session=self.session, channel=self.channel)
             time.sleep(update_interval)
             if time_streamed%(intervals_for_ad*update_interval)==0:
                 self.send_info()
@@ -683,83 +626,6 @@ class ActiveUserProcess(MyDatabase):
             traceback.print_exc()
             self.messaging.define_sock()
 
-    def _get_current_viewers(self) -> [str]:
-        """
-
-        :return:
-        """
-        channel_viewers = f'https://tmi.twitch.tv/group/user/{self.channel}/chatters'
-        r = requests.get(channel_viewers)
-        if r.status_code == 200:
-            viewer_json = r.json()
-            vips = viewer_json['chatters']['vips']
-            mods = viewer_json['chatters']['moderators']
-            viewers = viewer_json['chatters']['viewers']
-            all_viewers = vips+mods+viewers
-            return all_viewers
-        return []
-
-    def _give_chatpoints(self):
-        """
-
-        :return:
-        """
-        users = self.session.query(ActiveUsers).all()
-        stat = 'channel_points'
-        for active_user in users:
-            if active_user.user_id:
-                stats_obj = self.get_stats_obj_(active_user, stat)
-                if not stats_obj.stat_value:
-                    stats_obj.stat_value = '1'
-                else:
-                    new_point = int(stats_obj.stat_value) + 1
-                    stats_obj.stat_value = str(new_point)
-                self.session.add(stats_obj)
-        self.session.commit()
-
-    def get_stats_obj_(self, user: Users, stat: str) -> UserStats:
-        """
-
-        :param user:
-        :param stat:
-        :return:
-        """
-        channel = self.session.query(Channels) \
-            .where(Channels.channel == self.channel).first()
-        stats_obj = self.session.query(UserStats) \
-            .where(UserStats.user_id == user.user_id) \
-            .where(UserStats.channel_id == channel.channel_id)\
-            .where(UserStats.stat == stat).first()
-        if not stats_obj:
-            stats_obj = UserStats(
-                user_id=user.user_id,
-                channel_id=channel.channel_id,
-                stat=stat
-            )
-        return stats_obj
-
-    def _update_active_users(self):
-        """
-        Checks twitch API to see who's in chat and updates active users database accordingly
-        :return:
-        """
-        viewers = self._get_current_viewers()
-        print('Viewers: ' + str(viewers))
-        active_database = self.session.query(ActiveUsers).all()
-        for user in viewers:
-            active_obj = self.session.query(ActiveUsers)\
-                .where(ActiveUsers.user == user).first()
-            if not active_obj:
-                user_obj = self.session.query(Users).where(Users.user == user).first()
-                active_obj = ActiveUsers(user=user, logged_in=time.time())
-                if user_obj:
-                    active_obj.user_id = user_obj.user_id
-                self.session.add(active_obj)
-        for user in active_database:
-            if user.user not in viewers:
-                self.session.delete(user)
-        self.session.commit()
-
 
 class RewardHandler(MyDatabase):
 
@@ -777,27 +643,9 @@ class RewardHandler(MyDatabase):
         #     return self.play_sound(message)
         if re.match('!wordcount', comment, flags=re.IGNORECASE):
             return self.count_words(message)
-        if re.match('!breakaway', comment, flags=re.IGNORECASE):
-            return self.breakaway(message)
+        # if re.match('!breakaway', comment, flags=re.IGNORECASE):
+        #     return self.breakaway(message)
         return ''
-
-    # def play_sound(self, message, file_name='user_sound.mp3') -> str:
-    #     points_req = 10
-    #     user = get_user(message)
-    #     return_response = 'You don\'t have enough points for that ya silly'
-    #     if self.has_enough_points(message, points_req):
-    #         comment = get_comment(message)
-    #         if len(comment) > 4:
-    #             text = comment[4:].strip()
-    #         else:
-    #             text = 'You forgot to add the text! I\'ll take your points anyways sucka'
-    #         sound = self.save_sound(text, file_name)
-    #         print('sound path: ', sound)
-    #         Process(target=playsound, args=(sound,)).start()
-    #         new_value = self.subtract_points(user, self.channel, points_req, self.session)
-    #         return_response = f'@{user} you\'ve spent 10 Spoon Bucks! Now you at {new_value}'
-    #     self.session.close()
-    #     return return_response
 
     def count_words(self, message):
         """
@@ -848,7 +696,7 @@ class RewardHandler(MyDatabase):
 
     def has_enough_points(self, message, points_req) -> bool:
         user = get_user(message)
-        user_obj = self.get_existing_user(user=user, session=self.session)
+        user_obj = self.get_user_obj(user=user, session=self.session)
         stats_obj = self.get_stats_obj(
             user=user_obj, channel=self.channel, stat='channel_points', session=self.session
         )

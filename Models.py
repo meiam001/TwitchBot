@@ -1,11 +1,12 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, Table, DATETIME, create_engine, MetaData, Float
+from sqlalchemy import Column, Integer, String, ForeignKey, Table, DATETIME, create_engine, MetaData, Float, DateTime
 from sqlalchemy.orm import Session
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.sql import func
-from Parsers import get_channel, get_user
-import time
+import datetime
+from sqlalchemy.sql import func, desc
+from Parsers import get_channel, get_user, get_comment
 import os
-
+import requests
+import time
 Base = declarative_base()
 
 class UserStats(Base):
@@ -16,6 +17,7 @@ class UserStats(Base):
     stat = Column(String)
     stat_value = Column(String)
     created = Column(DATETIME, default=func.now())
+    last_updated = Column(DateTime, onupdate=datetime.datetime.now)
 
 class ActiveUsers(Base):
     __tablename__='activeUsers'
@@ -53,6 +55,7 @@ class Cooldowns(Base):
     length = Column(Integer)
     last_used = Column(Float)
     created = Column(DATETIME, default=func.now())
+    last_updated = Column(DateTime, onupdate=datetime.datetime.now)
 
 class MyDatabase:
     DB_ENGINE = {
@@ -82,7 +85,8 @@ class MyDatabase:
             Column('user_id', Integer, ForeignKey('users.user_id')),
             Column('user', String),
             Column('logged_in', Float),
-            Column('last_checked', Float)
+            Column('last_checked', Float),
+            Column('last_updated', DateTime, onupdate=datetime.datetime.now)
                            )
 
         userStats = Table('userStats', metadata,
@@ -117,6 +121,7 @@ class MyDatabase:
                             Column('cd_type', String),
                             Column('last_used', Float),
                             Column('length', Integer),
+                            Column('last_updated', DateTime, onupdate=datetime.datetime.now),
                             Column('created', DATETIME, default=func.now())
                           )
         try:
@@ -125,6 +130,56 @@ class MyDatabase:
         except Exception as e:
             print("Error occurred during Table creation!")
             print(e)
+
+    def write_message(self, message: str, session)->str:
+        """
+
+        :param message:
+        :return:
+        """
+        user = get_user(message)
+        comment = get_comment(message)
+        channel = get_channel(message)
+        user_obj = session.query(Users).where(Users.user==user).first()
+        channel_obj = session.query(Channels).where(Channels.channel==channel).first()
+        if user_obj:
+            self.commit_comment_exists(comment, user_obj, channel_obj, session)
+        else:
+            return self.commit_comment_dne(comment, user, channel_obj, session, channel)
+        return ''
+
+    def commit_comment_exists(self, comment: str, user_obj: Users, channel_obj: Channels, session):
+        """
+
+        :param comment:
+        :param user_obj:
+        :param channel_obj:
+        :return:
+        """
+        comment_obj = Comments(comment=comment, user_id=user_obj.user_id, channel_id=channel_obj.channel_id)
+        session.add(comment_obj)
+        session.commit()
+
+    def commit_comment_dne(self, comment: str, user: str, channel_obj: Channels, session, channel):
+        """
+
+        :param comment:
+        :param user:
+        :param channel_obj:
+        :return:
+        """
+        user_obj = Users(user=user)
+        session.add(user_obj)
+        session.commit()
+        comment_obj = Comments(
+            comment=comment, user_id=user_obj.user_id, channel_id=channel_obj.channel_id
+        )
+        stats_obj = self.get_stats_obj(user_obj, channel, 'channel_points', session)
+        stats_obj.stat_value = '0'
+        session.add(stats_obj)
+        session.add(comment_obj)
+        session.commit()
+        return f'It\'s @{user}\'s first time in chat! Say hi! (And don\'t forget to follow :D)'
 
     def create_folder(self, path: str, folder_name: str):
         if folder_name not in os.listdir(path):
@@ -218,17 +273,109 @@ class MyDatabase:
         """
         :return:
         """
-        channel = session.query(Channels).where(Channels.channel==channel).first()
+        channel = session.query(Channels).where(Channels.channel == channel).first()
         users_comments = session.query(Comments)\
-            .join(Users, Comments.user_id==Users.user_id)\
-            .where(Users.user==user)\
-            .where(Comments.channel_id==channel.channel_id)\
+            .join(Users, Comments.user_id == Users.user_id)\
+            .where(Users.user == user)\
+            .where(Comments.channel_id == channel.channel_id)\
             .all()
         return users_comments
 
+    def get_stats_obj_(self, user: Users, stat: str, session, channel) -> UserStats:
+        """
+
+        :param user:
+        :param stat:
+        :return:
+        """
+        channel = session.query(Channels) \
+            .where(Channels.channel == channel).first()
+        stats_obj = session.query(UserStats) \
+            .where(UserStats.user_id == user.user_id) \
+            .where(UserStats.channel_id == channel.channel_id)\
+            .where(UserStats.stat == stat).first()
+        if not stats_obj:
+            stats_obj = UserStats(
+                user_id=user.user_id,
+                channel_id=channel.channel_id,
+                stat=stat
+            )
+        return stats_obj
+
+    def _give_chatpoints(self, channel, session):
+        """
+
+        :return:
+        """
+        users = session.query(ActiveUsers).all()
+        stat = 'channel_points'
+        for active_user in users:
+            if active_user.user_id:
+                stats_obj = self.get_stats_obj_(active_user, stat, session, channel)
+                if not stats_obj.stat_value:
+                    stats_obj.stat_value = '1'
+                else:
+                    new_point = int(stats_obj.stat_value) + 1
+                    stats_obj.stat_value = str(new_point)
+                session.add(stats_obj)
+        session.commit()
+
+    @staticmethod
+    def _get_current_viewers(channel) -> [str]:
+        """
+
+        :return:
+        """
+        channel_viewers = f'https://tmi.twitch.tv/group/user/{channel}/chatters'
+        r = requests.get(channel_viewers)
+        if r.status_code == 200:
+            viewer_json = r.json()
+            vips = viewer_json['chatters']['vips']
+            mods = viewer_json['chatters']['moderators']
+            viewers = viewer_json['chatters']['viewers']
+            all_viewers = vips+mods+viewers
+            return all_viewers
+        return []
+
+    @staticmethod
+    def get_top_commenters(channel, limit, session):
+        return session.query(Comments.user_id, func.count(Comments.user_id), Users.user) \
+            .join(Users, Users.user_id == Comments.user_id) \
+            .join(Channels, Channels.channel_id == Comments.channel_id) \
+            .where(Channels.channel == channel) \
+            .where(Users.user != 'slowspoon') \
+            .group_by(Comments.user_id) \
+            .order_by(desc(func.count(Comments.user_id))) \
+            .limit(limit).all()
+
+    def _update_active_users(self, channel, session):
+        """
+        Checks twitch API to see who's in chat and updates active users database accordingly
+        :return:
+        """
+        viewers = self._get_current_viewers(channel)
+        print('Viewers: ' + str(viewers))
+        active_database = session.query(ActiveUsers).all()
+        for user in viewers:
+            active_obj = session.query(ActiveUsers)\
+                .where(ActiveUsers.user == user).first()
+            if not active_obj:
+                user_obj = session.query(Users).where(Users.user == user).first()
+                active_obj = ActiveUsers(user=user, logged_in=time.time())
+                if user_obj:
+                    active_obj.user_id = user_obj.user_id
+                session.add(active_obj)
+        for user in active_database:
+            if user.user not in viewers:
+                session.delete(user)
+        session.commit()
 
 if __name__ == '__main__':
     pass
     x = MyDatabase('sqlite', dbname='.\\Database\\Chat.db')
-    x.create_db_tables()
     sesh = x.get_session(x.db_engine)
+    # sesh.execute('delete from users where user_id=1')
+    # sesh.execute('delete from comments where user_id=1')
+    # sesh.execute('delete from userstats where user_id=1')
+    # sesh.execute('delete from faketest where user_id=1')
+    x.create_db_tables()
