@@ -18,37 +18,27 @@ path_to_vlc = r'C:\Program Files\VideoLAN\VLC\vlc.exe'
 
 swear_words_regex = '|'.join(swear_words)
 
-class Cooldowns(MyDatabase):
+class Cooldown(MyDatabase):
 
     def __init__(self, tts_global=10, tts_users=180):
         super().__init__(dbtype='sqlite', dbname=f'{base_path}\\Database\\Chat.db')
         self.session = self.get_session(self.db_engine)
         self.tts_global = tts_global
         self.tts_user = tts_users
-        self.tts_users_times = {'global': 0}
 
-    def cooldown(self, message, cd_type: str, _times: str) -> str:
+    def cooldown(self, gcd_cooldown_obj, cooldown_obj, message, current_time) -> str:
         """
 
         :param message:
-        :param cd_type:
-        :param _times:
         :return:
         """
-        current_time = time.time()
-        gcd_cooldown_obj = self.get_gcd(message, self.session)
-        length = getattr(self, cd_type)
-        cooldown_obj = self.get_cooldown_obj(message, cd_type, length, self.session)
         global_diff = current_time - gcd_cooldown_obj.last_used
         if global_diff > gcd_cooldown_obj.length:
-            user = get_user(message)
             user_diff = current_time - cooldown_obj.last_used
-            if user_diff > length:
-                self.update_user_cd(cooldown_obj, current_time, self.session)
-                self.update_gcd(current_time, self.session, message)
+            if user_diff > cooldown_obj.length:
                 return ''
             else:
-                return f'@{user} you still got {length - int(user_diff)} seconds before you can do that'
+                return f'@{get_user(message)} you still got {cooldown_obj.length - int(user_diff)} seconds before you can do that'
         else:
             return f'{gcd_cooldown_obj.length - int(global_diff)} seconds remaining before command available'
 
@@ -66,11 +56,14 @@ class ShoutOuts:
         self.sound = sound
 
 streamer_shoutouts = {
+    'pedalgames':
+        ShoutOuts('I once saw this man casually chat while doing a 33 minute alpe.',
+                  sound='droctagonapus.mp3'),
     'LepageMaster'.lower():
         ShoutOuts('This man is bigger than a barge, the real Gaston.',
                   sound='policeprincess.mp3'),
     'hardclaws':
-        ShoutOuts('Fuck this guy and his silly accent.',
+        ShoutOuts('Fuck this guy and his silly accent and 1600 watt sprint.',
                   sound='princess.mp3'),
     'cyclingwithdoc':
         ShoutOuts('The army vet with the mostest is here!',
@@ -81,7 +74,7 @@ streamer_shoutouts = {
     'locutus_of_dei':
         ShoutOuts('His number of grey hairs is only second to his watts,'),
     'bulletfall':
-        ShoutOuts('This man is LOADED, make sure to ask him for money.',
+        ShoutOuts('King on the streets queen in the sheets.',
                   sound='moneycount.mp3'),
     'felttie':
        ShoutOuts('One of the few respectable zwifters is here!'),
@@ -199,7 +192,7 @@ class Sounds:
         :return: str: file path to tts file
         """
         file_name = self.generate_tts_filename()
-        tts = gTTS(text=text, lang='en', tld='com.au')
+        tts = gTTS(text=text, lang='en')
         file_path = os.path.join(self.base_path, 'Sounds', file_name)
         tts.save(file_path)
         return file_name
@@ -249,7 +242,6 @@ class Messaging:
         """
         self.sock.send(f'PRIVMSG #{self.channel} :{comment}\n'.encode('utf-8'))
 
-
 class TwitchBot(MyDatabase):
     def __init__(self, dbtype='sqlite'):
         """
@@ -258,7 +250,7 @@ class TwitchBot(MyDatabase):
         self.twitch_url = 'https://twitch.tv/'
         self.check_out = f'Check them out at {self.twitch_url}'
         self.sounds = Sounds(base_path)
-        self.cooldowns = Cooldowns(tts_global=10, tts_users=180)
+        self.cooldowns = Cooldown(tts_global=10, tts_users=180)
         sound_commands = ''
         for sound in self.sounds:
             sound_commands += f'{sound}, '
@@ -475,20 +467,35 @@ class TwitchBot(MyDatabase):
         """
         comment = get_comment(message)
         if comment.startswith('!tts'):
-            cooldown = self.cooldowns.cooldown(message, 'tts_user', 'tts_users_times')
+            cd_type = 'tts_user'
+            current_time = time.time()
+            text = comment[4:]
+            length = len(text) + 120
+            gcd_cooldown_obj = self.get_gcd(message, self.session)
+            cooldown_obj = self.get_cooldown_obj(
+                message=message, cd_type=cd_type, cd_length=length, session=self.session
+            )
+            cooldown = self.cooldowns.cooldown(
+                gcd_cooldown_obj=gcd_cooldown_obj, cooldown_obj=cooldown_obj, message=message,
+                current_time=current_time
+            )
             if not cooldown:
-                text = ''
-                tts_list = comment.split('!tts')
-                if len(tts_list) > 1:
-                    text = tts_list[1]
-                if text.strip():
-                    tts_file_path = self.sounds.save_tts(text)
-                    self.sounds.send_sound(tts_file_path)
+                if len(text) < 225:
+                    self.send_tts_text(text)
+                    self.update_gcd(current_time, self.session, message)
+                else:
+                    user = get_user(message)
+                    self.send_message(f'Don\'t be annoying @{user}')
+                self.update_user_cd(cooldown_obj, current_time, self.session, length=length)
             else:
                 self.send_message(cooldown)
 
+    def send_tts_text(self, text):
+        tts_file_path = self.sounds.save_tts(text)
+        self.sounds.send_sound(tts_file_path)
+
     def send_stats(self, message):
-        stats = self.get_channel_stats_obj(message)
+        stats = self.get_channel_stats_obj(message, session=self.session)
         if stats != '0':
             points = stats.stat_value
             send_string = f'You have {points} Spoon Bucks!'
@@ -497,28 +504,6 @@ class TwitchBot(MyDatabase):
                           'But seriously you have no points, hang out in chat more and ' \
                           'don\'t forget to keep your volume on.'
         self.send_message(send_string)
-
-    def get_channel_stats_obj(self, message, stat='channel_points'):
-        user_id = self.session.query(Users)\
-            .where(Users.user==get_user(message))\
-                .first().user_id
-        channel_id = self.session.query(Channels)\
-            .where(Channels.channel==config.channel)\
-                .first().channel_id
-        stats = self.session.query(UserStats)\
-            .where(UserStats.user_id==user_id)\
-            .where(UserStats.stat==stat)\
-            .where(UserStats.channel_id==channel_id).first()
-        if stats:
-            return stats
-        else:
-            stats = UserStats(user_id=user_id, channel_id=channel_id, stat='channel_points', stat_value='0')
-            self.session.add(stats)
-            self.session.commit()
-        return self.session.query(UserStats)\
-            .where(UserStats.user_id==user_id)\
-            .where(UserStats.stat==stat)\
-            .where(UserStats.channel_id==channel_id).first()
 
     def swearjar(self, message: str):
         user = get_user(message)
@@ -568,7 +553,6 @@ class TwitchBot(MyDatabase):
             return True
         return False
 
-
 class ActiveUserProcess(MyDatabase):
 
     def __init__(self, token, server,
@@ -603,7 +587,7 @@ class ActiveUserProcess(MyDatabase):
         self.session = self.get_session(self.db_engine)
         update_interval = 60
         time_streamed = 0
-        intervals_for_ad = 10
+        intervals_for_ad = 15
         while True:
             self._give_chatpoints(session=self.session, channel=self.channel)
             self._update_active_users(session=self.session, channel=self.channel)
@@ -625,7 +609,6 @@ class ActiveUserProcess(MyDatabase):
         except Exception as e:
             traceback.print_exc()
             self.messaging.define_sock()
-
 
 class RewardHandler(MyDatabase):
 

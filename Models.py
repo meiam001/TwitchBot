@@ -197,7 +197,31 @@ class MyDatabase:
             cooldown_object = self.insert_cooldown(message, session, gcd, 'Global')
         return cooldown_object
 
-    def get_cooldown_obj(self, message, cd_type, cd_length, session):
+
+    def get_channel_stats_obj(self, message, session, stat='channel_points'):
+        channel=get_channel(message)
+        user_id = session.query(Users)\
+            .where(Users.user==get_user(message))\
+                .first().user_id
+        channel_id = session.query(Channels)\
+            .where(Channels.channel==channel)\
+                .first().channel_id
+        stats = session.query(UserStats)\
+            .where(UserStats.user_id==user_id)\
+            .where(UserStats.stat==stat)\
+            .where(UserStats.channel_id==channel_id).first()
+        if stats:
+            return stats
+        else:
+            stats = UserStats(user_id=user_id, channel_id=channel_id, stat='channel_points', stat_value='0')
+            session.add(stats)
+            session.commit()
+        return session.query(UserStats)\
+            .where(UserStats.user_id==user_id)\
+            .where(UserStats.stat==stat)\
+            .where(UserStats.channel_id==channel_id).first()
+
+    def get_cooldown_obj(self, message, cd_type, session, cd_length=180):
         user = get_user(message)
         user_obj = self.get_user_obj(user, session)
         cooldown_obj = session.query(Cooldowns)\
@@ -217,13 +241,15 @@ class MyDatabase:
         session.commit()
         return cooldown_object
 
-    def update_gcd(self, current_time, session, message):
+    def update_gcd(self, current_time, session, message, length=10):
         gcd_obj = self.get_gcd(message, session)
         gcd_obj.last_used = current_time
+        gcd_obj.length = length
         session.commit()
 
-    def update_user_cd(self, cooldown_obj, current_time, session):
+    def update_user_cd(self, cooldown_obj, current_time, session, length=180):
         cooldown_obj.last_used = current_time
+        cooldown_obj.length = length
         session.commit()
 
     def get_channel_obj(self, message, session) -> Channels:
@@ -374,8 +400,4 @@ if __name__ == '__main__':
     pass
     x = MyDatabase('sqlite', dbname='.\\Database\\Chat.db')
     sesh = x.get_session(x.db_engine)
-    # sesh.execute('delete from users where user_id=1')
-    # sesh.execute('delete from comments where user_id=1')
-    # sesh.execute('delete from userstats where user_id=1')
-    # sesh.execute('delete from faketest where user_id=1')
     x.create_db_tables()
