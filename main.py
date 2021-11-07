@@ -1,10 +1,11 @@
 import socket
 import re
-from Models import Users, Comments, Channels, MyDatabase, ActiveUsers, UserStats
+from Models import Channels, MyDatabase, ActiveUsers
 import subprocess
 from setup import Config
 from gtts import gTTS
 import traceback
+import threading
 import time
 from multiprocessing import Process
 from swearwords import swear_words
@@ -212,6 +213,7 @@ class Sounds:
 class Messaging:
 
     def __init__(self, server: str, token: str, nick: str, channel: str, port: str):
+        super().__init__()
         self.server = server
         self.token = token
         self.nick = nick
@@ -244,6 +246,15 @@ class Messaging:
         :return:
         """
         self.sock.send(f'PRIVMSG #{self.channel} :{comment}\n'.encode('utf-8'))
+
+    def PONG(self):
+        threading.Thread(target=self._PONG)
+
+    def _PONG(self):
+        resp = self.sock.recv(2048).decode('utf-8')
+        if resp.startswith('PING'):
+            print('\n\n\n\nPONG SENT FROM MESSAGING\n\n\n\n')
+            self.sock.send(resp.replace('PING', 'PONG').encode('utf-8'))
 
 class TwitchBot(MyDatabase):
     def __init__(self, dbtype='sqlite'):
@@ -567,7 +578,8 @@ class TwitchBot(MyDatabase):
 class ActiveUserProcess(MyDatabase):
 
     def __init__(self, token, server,
-                       port, nick, channel, base_path, dbtype='sqlite'):
+                       port, nick, channel, base_path, dbtype='sqlite'
+                 ):
         """
         :param token:
         :param server:
@@ -587,6 +599,7 @@ class ActiveUserProcess(MyDatabase):
         self.messaging = Messaging(
             channel=self.channel, server=self.server, nick=self.nick, port=self.port, token=self.token
         )
+        self.messaging.PONG()
         self.session = None
         self.tb = None
         self.main()
@@ -602,11 +615,8 @@ class ActiveUserProcess(MyDatabase):
         while True:
             self._give_chatpoints(session=self.session, channel=self.channel)
             self._update_active_users(session=self.session, channel=self.channel)
-            resp = self.messaging.sock.recv(2048).decode('utf-8')
-            if resp.startswith('PING'):
-                self.messaging.sock.send(resp.replace('PING', 'PONG').encode('utf-8'))
             time.sleep(update_interval)
-            if time_streamed%(intervals_for_ad*update_interval)==0:
+            if time_streamed%(intervals_for_ad*update_interval) == 0:
                 self.send_info()
             time_streamed += update_interval
 
@@ -633,8 +643,6 @@ class RewardHandler(MyDatabase):
 
     def main(self, message: str):
         user = get_user(message)
-        # if user == 'slowspoon':
-        #     return
         comment = get_comment(message)
         # if re.match('!tts', comment, flags=re.IGNORECASE):
         #     return self.play_sound(message)
