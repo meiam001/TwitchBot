@@ -217,7 +217,8 @@ class Messaging:
         self.nick = nick
         self.channel = channel
         self.port = port
-        self.sock = self.define_sock()
+        self.sock: socket.socket
+        self.define_sock()
 
     @staticmethod
     def _connect(server, token, nick, channel, port) -> socket.socket:
@@ -231,8 +232,10 @@ class Messaging:
         sock.send(f"JOIN #{channel}\r\n".encode('utf-8'))
         return sock
 
-    def define_sock(self) -> socket.socket:
-        return self._connect(self.server, self.token, self.nick, self.channel, self.port)
+    def define_sock(self):
+        self.sock = self._connect(
+            self.server, self.token, self.nick, self.channel, self.port
+        )
 
     def send_message(self, comment: str):
         """
@@ -364,6 +367,7 @@ class TwitchBot(MyDatabase):
                 traceback.print_exc()
                 time.sleep(retry_time)
                 self.messaging.define_sock()
+                self.sock = self.messaging.sock
 
     def send_complement(self, message: str):
         """
@@ -469,7 +473,7 @@ class TwitchBot(MyDatabase):
         if comment.startswith('!tts'):
             cd_type = 'tts_user'
             current_time = time.time()
-            text = comment[4:]
+            text = self.fix_tts_text(get_comment(message))
             length = len(text) + 120
             gcd_cooldown_obj = self.get_gcd(message, self.session)
             cooldown_obj = self.get_cooldown_obj(
@@ -489,6 +493,13 @@ class TwitchBot(MyDatabase):
                 self.update_user_cd(cooldown_obj, current_time, self.session, length=length)
             else:
                 self.send_message(cooldown)
+
+    def fix_tts_text(self, text):
+        char_whitelist = '[^A-Za-z0-9\',.\s\?]+'
+        text = text[4:]
+        text = re.sub('!', '.', text)
+        text = re.sub(char_whitelist, '', text)
+        return text
 
     def send_tts_text(self, text):
         tts_file_path = self.sounds.save_tts(text)
@@ -591,6 +602,9 @@ class ActiveUserProcess(MyDatabase):
         while True:
             self._give_chatpoints(session=self.session, channel=self.channel)
             self._update_active_users(session=self.session, channel=self.channel)
+            resp = self.messaging.sock.recv(2048).decode('utf-8')
+            if resp.startswith('PING'):
+                self.messaging.sock.send(resp.replace('PING', 'PONG').encode('utf-8'))
             time.sleep(update_interval)
             if time_streamed%(intervals_for_ad*update_interval)==0:
                 self.send_info()
