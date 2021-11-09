@@ -19,6 +19,25 @@ path_to_vlc = r'C:\Program Files\VideoLAN\VLC\vlc.exe'
 
 swear_words_regex = '|'.join(swear_words)
 
+class Conversions:
+    def __init__(self, to_convert, conversion_float):
+        """
+        container class for weight conversions
+        :param to_convert:
+        :param conversion_float:
+        """
+        self.to_convert = to_convert
+        self.conversion_float = conversion_float
+
+    def __bool__(self):
+        if self.to_convert or int(self.to_convert)==0:
+            return True
+        return False
+
+    def __repr__(self):
+        return f'to_convert: {self.to_convert}, conversion_float: {self.conversion_float}'
+
+
 class Cooldown(MyDatabase):
 
     def __init__(self, tts_global=10, tts_users=180):
@@ -251,10 +270,12 @@ class Messaging:
         threading.Thread(target=self._PONG)
 
     def _PONG(self):
-        resp = self.sock.recv(2048).decode('utf-8')
-        if resp.startswith('PING'):
-            print('\n\n\n\nPONG SENT FROM MESSAGING\n\n\n\n')
-            self.sock.send(resp.replace('PING', 'PONG').encode('utf-8'))
+        while True:
+            resp = self.sock.recv(2048).decode('utf-8')
+            print('GAHHHHHHH!!!!!!')
+            if resp.startswith('PING'):
+                print('\n\n\n\nPONG SENT FROM MESSAGING\n\n\n\n')
+                self.sock.send(resp.replace('PING', 'PONG').encode('utf-8'))
 
 class TwitchBot(MyDatabase):
     def __init__(self, dbtype='sqlite'):
@@ -274,6 +295,7 @@ class TwitchBot(MyDatabase):
                             '!strava': 'https://www.strava.com/athletes/58350447',
                             '!swearjar': self.swearjar,
                             '!time': self.send_time,
+                            '!convert': '!convert <number><pounds/kg/f/c>',
                             '!sounds': sound_commands,
                             '!lurk': self.lurk,
                             # '!rewards': self.rewards,
@@ -370,6 +392,7 @@ class TwitchBot(MyDatabase):
                             self.send_complement(message)
                             self.check_tts(message)
                             self.check_sound(message)
+                            self.conversions(message)
                             reward_response = self.reward_handler.main(message)
                             if reward_response and isinstance(reward_response, str):
                                 self.send_message(reward_response)
@@ -379,6 +402,98 @@ class TwitchBot(MyDatabase):
                 time.sleep(retry_time)
                 self.messaging.define_sock()
                 self.sock = self.messaging.sock
+
+    def conversions(self, message: str) -> None:
+        """
+        processes messages and converts units for chat (f/c/kg/pounds)
+        :param message:
+        :return: None
+        """
+        comment = get_comment(message)
+        return_message = ''
+        if comment.startswith('!convert'):
+            conversions = self.get_conversions(comment)
+            print(conversions)
+            if conversions:
+                return_message = self.get_conversion_return_message(conversions, comment)
+                print(f'conversions_return_message: {return_message}')
+            if return_message:
+                self.send_message(return_message)
+            else:
+                self.send_message(
+                    'The proper format is <Number to convert><Unit to convert>. '
+                    'Supports pounds/kg/f/c'
+                )
+
+    def get_conversions(self, comment: str) -> Conversions:
+        """
+
+        :param comment:
+        :return:
+        """
+        to_convert = comment[len('!convert'):].strip().lower()
+        conversion_float = 0
+        to_convert = re.match('\d+', to_convert)
+        if to_convert:
+            to_convert = float(to_convert[0])
+            conversion_float = float(to_convert)
+        conversions = Conversions(to_convert=to_convert, conversion_float=conversion_float)
+        return conversions
+
+    def get_conversion_return_message(self, conversions: Conversions, comment: str) -> str:
+        """
+
+        :param conversions:
+        :param comment:
+        :return:
+        """
+        return_message = ''
+        to_convert = conversions.to_convert
+        if comment.endswith('f'):
+            c = self.f_to_c(conversions.to_convert)
+            return_message = f'{to_convert} Fahrenheit is {c} Celsius'
+        elif comment.endswith('c'):
+            f = self.c_to_f(to_convert)
+            return_message = f'{to_convert} Celsius is {f} Fahrenheit'
+        elif comment.endswith('kg'):
+            pounds = self.kg_to_pounds(to_convert)
+            return_message = f'{to_convert} kg is {pounds} pounds'
+        elif comment.endswith('pounds'):
+            kg = self.pounds_to_kg(to_convert)
+            return_message = f'{to_convert} pounds is {kg} kg'
+        return return_message
+
+    def f_to_c(self, f: float) -> float:
+        """
+        converts Fahrenheit to Celsius
+        :param f: Fahrenheit
+        :return: Celsius
+        """
+        return round((f-32)*(5/9), 1)
+
+    def c_to_f(self, c: float)->float:
+        """
+        converts celsius to fahrenheit
+        :param c: Celsius
+        :return: Fahrenheit
+        """
+        return round((c*1.8)+32, 1)
+
+    def kg_to_pounds(self, kg: float) -> float:
+        """
+
+        :param kg:
+        :return:
+        """
+        return round(2.20462262185*kg, 1)
+
+    def pounds_to_kg(self, pounds: float) -> float:
+        """
+
+        :param pounds:
+        :return:
+        """
+        return round(pounds/2.20462262185, 1)
 
     def send_complement(self, message: str):
         """
@@ -620,19 +735,23 @@ class ActiveUserProcess(MyDatabase):
                 self.send_info()
             time_streamed += update_interval
 
-    def send_info(self):
+    def send_info(self, attempts=0):
         """
         Send stream info periodically
         :return:
         """
         message = '!commands to see all the fun shit you can do. Don\'t forget to follow!'
         try:
-            self.sounds.send_sound('follow.mp3')
+            if not attempts:
+                self.sounds.send_sound('follow.mp3')
             self.messaging.send_message(message)
             print('Sent ad')
         except Exception as e:
             traceback.print_exc()
             self.messaging.define_sock()
+            if attempts < 4:
+                attempts += 1
+                return self.send_info(attempts=attempts)
 
 class RewardHandler(MyDatabase):
 
