@@ -19,23 +19,21 @@ path_to_vlc = r'C:\Program Files\VideoLAN\VLC\vlc.exe'
 
 swear_words_regex = '|'.join(swear_words)
 
-class Conversions:
-    def __init__(self, to_convert, conversion_float):
-        """
-        container class for weight conversions
-        :param to_convert:
-        :param conversion_float:
-        """
-        self.to_convert = to_convert
-        self.conversion_float = conversion_float
-
-    def __bool__(self):
-        if self.to_convert or int(self.to_convert)==0:
-            return True
-        return False
-
-    def __repr__(self):
-        return f'to_convert: {self.to_convert}, conversion_float: {self.conversion_float}'
+# class Conversions:
+#     def __init__(self, to_convert):
+#         """
+#         container class for weight conversions
+#         :param to_convert:
+#         """
+#         self.to_convert = to_convert
+#
+#     def __bool__(self):
+#         if self.to_convert or int(self.to_convert)==0:
+#             return True
+#         return False
+#
+#     def __repr__(self):
+#         return f'to_convert: {self.to_convert}'
 
 
 class Cooldown(MyDatabase):
@@ -295,7 +293,7 @@ class TwitchBot(MyDatabase):
                             '!strava': 'https://www.strava.com/athletes/58350447',
                             '!swearjar': self.swearjar,
                             '!time': self.send_time,
-                            '!convert': '!convert <number><pounds/kg/f/c>',
+                            '!convert': '!convert <number><lb/kg/f/c>',
                             '!sounds': sound_commands,
                             '!lurk': self.lurk,
                             # '!rewards': self.rewards,
@@ -410,57 +408,65 @@ class TwitchBot(MyDatabase):
         :return: None
         """
         comment = get_comment(message)
-        return_message = ''
         if comment.startswith('!convert'):
-            conversions = self.get_conversions(comment)
-            print(conversions)
-            if conversions:
-                return_message = self.get_conversion_return_message(conversions, comment)
-                print(f'conversions_return_message: {return_message}')
-            if return_message:
-                self.send_message(return_message)
+            user = get_user(message)
+            if self.proper_conversion_comment(comment):
+                to_convert = self.get_to_convert(comment)
+                if to_convert:
+                    to_convert = float(to_convert)
+                    return_message = self.get_conversion_return_message(to_convert, comment)
+                    self.send_message(return_message + f' @{user}')
             else:
                 self.send_message(
-                    'The proper format is <Number to convert><Unit to convert>. '
-                    'Supports pounds/kg/f/c'
+                    f'@{user} The proper format is <Number to convert><Unit to convert>. '
+                    'Supports lb/kg/f/c'
                 )
 
-    def get_conversions(self, comment: str) -> Conversions:
-        """
+    def proper_conversion_comment(self, comment) -> bool:
+        return bool(re.match(
+            '!convert\s-?\d+(\.\d+)?\s?(f|c|kg|lb)\Z',
+            comment,
+            flags=re.IGNORECASE
+        ))
 
-        :param comment:
-        :return:
-        """
+    def get_to_convert(self, comment: str) -> str:
         to_convert = comment[len('!convert'):].strip().lower()
-        conversion_float = 0
-        to_convert = re.match('\d+', to_convert)
+        to_convert = re.match('-?\d+(\.\d+)?', to_convert)
         if to_convert:
-            to_convert = float(to_convert[0])
-            conversion_float = float(to_convert)
-        conversions = Conversions(to_convert=to_convert, conversion_float=conversion_float)
-        return conversions
+            return to_convert[0]
 
-    def get_conversion_return_message(self, conversions: Conversions, comment: str) -> str:
+    def get_conversion_return_message(self, to_convert: float, comment: str) -> str:
         """
 
-        :param conversions:
+        :param to_convert:
         :param comment:
         :return:
         """
         return_message = ''
-        to_convert = conversions.to_convert
         if comment.endswith('f'):
-            c = self.f_to_c(conversions.to_convert)
-            return_message = f'{to_convert} Fahrenheit is {c} Celsius'
+            if -100 < to_convert < 5000:
+                c = self.f_to_c(to_convert)
+                return_message = f'{to_convert} Fahrenheit is {c} Celsius'
+            else:
+                return_message = 'Choose a number between -100 and 5000 ya dingus'
         elif comment.endswith('c'):
-            f = self.c_to_f(to_convert)
-            return_message = f'{to_convert} Celsius is {f} Fahrenheit'
+            if -100 < to_convert < 5000:
+                f = self.c_to_f(to_convert)
+                return_message = f'{to_convert} Celsius is {f} Fahrenheit'
+            else:
+                return_message = 'Choose a number between -100 and 5000 ya dingus'
         elif comment.endswith('kg'):
-            pounds = self.kg_to_pounds(to_convert)
-            return_message = f'{to_convert} kg is {pounds} pounds'
-        elif comment.endswith('pounds'):
-            kg = self.pounds_to_kg(to_convert)
-            return_message = f'{to_convert} pounds is {kg} kg'
+            if 0 <= to_convert < 100000:
+                pounds = self.kg_to_pounds(to_convert)
+                return_message = f'{to_convert} kg is {pounds} lbs'
+            else:
+                return_message = 'Choose a number between 0 and 100000 ya dingus'
+        elif comment.endswith('lb'):
+            if 0 <= to_convert < 100000:
+                kg = self.pounds_to_kg(to_convert)
+                return_message = f'{to_convert} lbs is {kg} kg'
+            else:
+                return_message = 'Choose a number between 0 and 100000 ya dingus'
         return return_message
 
     def f_to_c(self, f: float) -> float:
@@ -714,7 +720,6 @@ class ActiveUserProcess(MyDatabase):
         self.messaging = Messaging(
             channel=self.channel, server=self.server, nick=self.nick, port=self.port, token=self.token
         )
-        self.messaging.PONG()
         self.session = None
         self.tb = None
         self.main()
@@ -744,14 +749,11 @@ class ActiveUserProcess(MyDatabase):
         try:
             if not attempts:
                 self.sounds.send_sound('follow.mp3')
+            self.messaging.define_sock()
             self.messaging.send_message(message)
             print('Sent ad')
-        except Exception as e:
+        except:
             traceback.print_exc()
-            self.messaging.define_sock()
-            if attempts < 4:
-                attempts += 1
-                return self.send_info(attempts=attempts)
 
 class RewardHandler(MyDatabase):
 
