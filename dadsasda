@@ -1,0 +1,303 @@
+[1mdiff --git a/TestingScript.py b/TestingScript.py[m
+[1mindex d8a4f6e..3ceb257 100644[m
+[1m--- a/TestingScript.py[m
+[1m+++ b/TestingScript.py[m
+[36m@@ -1,30 +1,10 @@[m
+[31m-from gtts import gTTS[m
+[31m-# from playsound import playsound[m
+ [m
+[31m-mytext = 'testing'[m
+[32m+[m[32mimport traceback[m
+[32m+[m[32m# def stuff():[m
+[32m+[m[32m#     try:[m
+[32m+[m[32m#         x[m
+[32m+[m[32m#     except Exception:[m
+[32m+[m[32m#         raise[m
+ [m
+[31m-language = 'en'[m
+[31m-[m
+[31m-myobj = gTTS(text=mytext, lang=language, slow=False)[m
+[31m-[m
+[31m-myobj.save("welcome.mp3")[m
+[31m-[m
+[31m-# import os[m
+[31m-# import re[m
+[31m-# from multiprocessing import Process[m
+[31m-# path_to_notepad = r'C:\Program Files\VideoLAN\VLC\vlc.exe'[m
+[31m-# # path_to_file = 'Sounds\\watchTV.mp4'[m
+[31m-# import subprocess[m
+[31m-# subprocess.run([path_to_notepad, "welcome.mp3", '--play-and-exit', '--qt-start-minimized'])[m
+[31m-[m
+[31m-# import requests[m
+[31m-# my_headers = {'Authorization': f'Bearer {access_token}'}[m
+[31m-# response = requests.get('https://api.twitch.tv/helix/users?login=slowspoon', headers=my_headers)[m
+[31m-[m
+[31m-# import win32com.client as wincl[m
+[31m-# speak = wincl.Dispatch("SAPI.SpVoice")[m
+[31m-# speak.Speak("Hello World")[m
+[31m-# from win32com import client[m
+[31m-# from win32com.client import constants[m
+[31m-# speaker = client.Dispatch("SAPI.SpVoice", constants.SVSFlagsAsync)[m
+[31m-# speaker.Speak('teehee')[m
+\ No newline at end of file[m
+[32m+[m[32m# stuff()[m
+[32m+[m[32mprint(5)[m
+\ No newline at end of file[m
+[1mdiff --git a/log.py b/log.py[m
+[1mindex e69de29..53dcbef 100644[m
+[1m--- a/log.py[m
+[1m+++ b/log.py[m
+[36m@@ -0,0 +1,46 @@[m
+[32m+[m[32mimport sys, os[m
+[32m+[m[32mimport logging[m
+[32m+[m
+[32m+[m[32mclass CustomFormatter(logging.Formatter):[m
+[32m+[m[32m    """ Custom Formatter does these 2 things:[m
+[32m+[m[32m    1. Overrides 'funcName' with the value of 'func_name_override', if it exists.[m
+[32m+[m[32m    2. Overrides 'filename' with the value of 'file_name_override', if it exists.[m
+[32m+[m[32m    """[m
+[32m+[m[32m    def format(self, record):[m
+[32m+[m[32m        if hasattr(record, 'func_name_override'):[m
+[32m+[m[32m            record.funcName = record.func_name_override[m
+[32m+[m[32m        if hasattr(record, 'file_name_override'):[m
+[32m+[m[32m            record.filename = record.file_name_override[m
+[32m+[m[32m        return super(CustomFormatter, self).format(record)[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef get_logger(log_file: str, log_dir='.', level=40) -> logging.Logger:[m
+[32m+[m[32m    """[m
+[32m+[m
+[32m+[m[32m    :param log_file:[m
+[32m+[m[32m    :param log_dir:[m
+[32m+[m[32m    :param level:[m
+[32m+[m[32m        CRITICAL = 50[m
+[32m+[m[32m        ERROR = 40[m
+[32m+[m[32m        WARNING = 30[m
+[32m+[m[32m        WARN = WARNING[m
+[32m+[m[32m        INFO = 20[m
+[32m+[m[32m        DEBUG = 10[m
+[32m+[m[32m        NOTSET = 0[m
+[32m+[m[32m    :return:[m
+[32m+[m[32m    """[m
+[32m+[m[32m    logPath = os.path.join(log_dir, log_file + '.log')[m
+[32m+[m[32m    if not os.path.exists(log_dir):[m
+[32m+[m[32m        os.makedirs(logPath)[m
+[32m+[m[32m    logger = logging.Logger(logPath)[m
+[32m+[m[32m    logger.setLevel(level)[m
+[32m+[m[32m    handler = logging.FileHandler(logPath, 'a+')[m
+[32m+[m[32m    handler.setFormatter(CustomFormatter([m
+[32m+[m[32m        '%(asctime)s - %(levelname)-10s - %(filename)s - %(funcName)s - %(message)s'[m
+[32m+[m[32m    ))[m
+[32m+[m[32m    logger.addHandler(handler)[m
+[32m+[m[32m    return logger[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef x():[m
+[32m+[m[32m    return f'Exception: {str(sys.exc_info())}'[m
+[1mdiff --git a/main.py b/main.py[m
+[1mindex f979294..92446ee 100644[m
+[1m--- a/main.py[m
+[1m+++ b/main.py[m
+[36m@@ -19,21 +19,60 @@[m [mpath_to_vlc = r'C:\Program Files\VideoLAN\VLC\vlc.exe'[m
+ [m
+ swear_words_regex = '|'.join(swear_words)[m
+ [m
+[31m-# class Conversions:[m
+[31m-#     def __init__(self, to_convert):[m
+[31m-#         """[m
+[31m-#         container class for weight conversions[m
+[31m-#         :param to_convert:[m
+[31m-#         """[m
+[31m-#         self.to_convert = to_convert[m
+[31m-#[m
+[31m-#     def __bool__(self):[m
+[31m-#         if self.to_convert or int(self.to_convert)==0:[m
+[31m-#             return True[m
+[31m-#         return False[m
+[31m-#[m
+[31m-#     def __repr__(self):[m
+[31m-#         return f'to_convert: {self.to_convert}'[m
+[32m+[m[32mclass Conversions:[m
+[32m+[m[32m    def __init__(self, comment: str):[m
+[32m+[m[32m        """[m
+[32m+[m[32m        container class for weight and temp conversions[m
+[32m+[m[32m        :param comment:[m
+[32m+[m[32m        """[m
+[32m+[m[32m        self.comment = comment[m
+[32m+[m[32m        self.to_convert = self.get_to_convert(comment)[m
+[32m+[m
+[32m+[m[32m    def __bool__(self):[m
+[32m+[m[32m        if type(self.to_convert)==float:[m
+[32m+[m[32m            return True[m
+[32m+[m[32m        return False[m
+[32m+[m
+[32m+[m[32m    def __repr__(self):[m
+[32m+[m[32m        return f'to_convert: {self.to_convert}'[m
+[32m+[m
+[32m+[m[32m    def f_to_c(self, f: float) -> float:[m
+[32m+[m[32m        """[m
+[32m+[m[32m        converts Fahrenheit to Celsius[m
+[32m+[m[32m        :param f: Fahrenheit[m
+[32m+[m[32m        :return: Celsius[m
+[32m+[m[32m        """[m
+[32m+[m[32m        return round((f-32)*(5/9), 1)[m
+[32m+[m
+[32m+[m[32m    def c_to_f(self, c: float)->float:[m
+[32m+[m[32m        """[m
+[32m+[m[32m        converts celsius to fahrenheit[m
+[32m+[m[32m        :param c: Celsius[m
+[32m+[m[32m        :return: Fahrenheit[m
+[32m+[m[32m        """[m
+[32m+[m[32m        return round((c*1.8)+32, 1)[m
+[32m+[m
+[32m+[m[32m    def kg_to_pounds(self, kg: float) -> float:[m
+[32m+[m[32m        """[m
+[32m+[m
+[32m+[m[32m        :param kg:[m
+[32m+[m[32m        :return:[m
+[32m+[m[32m        """[m
+[32m+[m[32m        return round(2.20462262185*kg, 1)[m
+[32m+[m
+[32m+[m[32m    def pounds_to_kg(self, pounds: float) -> float:[m
+[32m+[m[32m        """[m
+[32m+[m
+[32m+[m[32m        :param pounds:[m
+[32m+[m[32m        :return:[m
+[32m+[m[32m        """[m
+[32m+[m[32m        return round(pounds/2.20462262185, 1)[m
+[32m+[m
+[32m+[m[32m    def get_to_convert(self, comment: str) -> float:[m
+[32m+[m[32m        to_convert = comment[len('!convert'):].strip().lower()[m
+[32m+[m[32m        to_convert = re.match('-?\d+(\.\d+)?', to_convert)[m
+[32m+[m[32m        if to_convert:[m
+[32m+[m[32m            return float(to_convert[0])[m
+ [m
+ [m
+ class Cooldown(MyDatabase):[m
+[36m@@ -270,7 +309,6 @@[m [mclass Messaging:[m
+     def _PONG(self):[m
+         while True:[m
+             resp = self.sock.recv(2048).decode('utf-8')[m
+[31m-            print('GAHHHHHHH!!!!!!')[m
+             if resp.startswith('PING'):[m
+                 print('\n\n\n\nPONG SENT FROM MESSAGING\n\n\n\n')[m
+                 self.sock.send(resp.replace('PING', 'PONG').encode('utf-8'))[m
+[36m@@ -411,10 +449,9 @@[m [mclass TwitchBot(MyDatabase):[m
+         if comment.startswith('!convert'):[m
+             user = get_user(message)[m
+             if self.proper_conversion_comment(comment):[m
+[31m-                to_convert = self.get_to_convert(comment)[m
+[31m-                if to_convert:[m
+[31m-                    to_convert = float(to_convert)[m
+[31m-                    return_message = self.get_conversion_return_message(to_convert, comment)[m
+[32m+[m[32m                conversion = Conversions(comment)[m
+[32m+[m[32m                if conversion:[m
+[32m+[m[32m                    return_message = self.get_conversion_return_message(conversion)[m
+                     self.send_message(return_message + f' @{user}')[m
+             else:[m
+                 self.send_message([m
+[36m@@ -429,78 +466,41 @@[m [mclass TwitchBot(MyDatabase):[m
+             flags=re.IGNORECASE[m
+         ))[m
+ [m
+[31m-    def get_to_convert(self, comment: str) -> str:[m
+[31m-        to_convert = comment[len('!convert'):].strip().lower()[m
+[31m-        to_convert = re.match('-?\d+(\.\d+)?', to_convert)[m
+[31m-        if to_convert:[m
+[31m-            return to_convert[0][m
+[31m-[m
+[31m-    def get_conversion_return_message(self, to_convert: float, comment: str) -> str:[m
+[32m+[m[32m    def get_conversion_return_message(self, conversion: Conversions) -> str:[m
+         """[m
+ [m
+[31m-        :param to_convert:[m
+[31m-        :param comment:[m
+[32m+[m[32m        :param conversion:[m
+         :return:[m
+         """[m
+         return_message = ''[m
+[32m+[m[32m        to_convert = conversion.to_convert[m
+[32m+[m[32m        comment = conversion.comment[m
+         if comment.endswith('f'):[m
+             if -100 < to_convert < 5000:[m
+[31m-                c = self.f_to_c(to_convert)[m
+[32m+[m[32m                c = conversion.f_to_c(to_convert)[m
+                 return_message = f'{to_convert} Fahrenheit is {c} Celsius'[m
+             else:[m
+                 return_message = 'Choose a number between -100 and 5000 ya dingus'[m
+         elif comment.endswith('c'):[m
+             if -100 < to_convert < 5000:[m
+[31m-                f = self.c_to_f(to_convert)[m
+[32m+[m[32m                f = conversion.c_to_f(to_convert)[m
+                 return_message = f'{to_convert} Celsius is {f} Fahrenheit'[m
+             else:[m
+                 return_message = 'Choose a number between -100 and 5000 ya dingus'[m
+         elif comment.endswith('kg'):[m
+             if 0 <= to_convert < 100000:[m
+[31m-                pounds = self.kg_to_pounds(to_convert)[m
+[32m+[m[32m                pounds = conversion.kg_to_pounds(to_convert)[m
+                 return_message = f'{to_convert} kg is {pounds} lbs'[m
+             else:[m
+                 return_message = 'Choose a number between 0 and 100000 ya dingus'[m
+         elif comment.endswith('lb'):[m
+             if 0 <= to_convert < 100000:[m
+[31m-                kg = self.pounds_to_kg(to_convert)[m
+[32m+[m[32m                kg = conversion.pounds_to_kg(to_convert)[m
+                 return_message = f'{to_convert} lbs is {kg} kg'[m
+             else:[m
+                 return_message = 'Choose a number between 0 and 100000 ya dingus'[m
+         return return_message[m
+ [m
+[31m-    def f_to_c(self, f: float) -> float:[m
+[31m-        """[m
+[31m-        converts Fahrenheit to Celsius[m
+[31m-        :param f: Fahrenheit[m
+[31m-        :return: Celsius[m
+[31m-        """[m
+[31m-        return round((f-32)*(5/9), 1)[m
+[31m-[m
+[31m-    def c_to_f(self, c: float)->float:[m
+[31m-        """[m
+[31m-        converts celsius to fahrenheit[m
+[31m-        :param c: Celsius[m
+[31m-        :return: Fahrenheit[m
+[31m-        """[m
+[31m-        return round((c*1.8)+32, 1)[m
+[31m-[m
+[31m-    def kg_to_pounds(self, kg: float) -> float:[m
+[31m-        """[m
+[31m-[m
+[31m-        :param kg:[m
+[31m-        :return:[m
+[31m-        """[m
+[31m-        return round(2.20462262185*kg, 1)[m
+[31m-[m
+[31m-    def pounds_to_kg(self, pounds: float) -> float:[m
+[31m-        """[m
+[31m-[m
+[31m-        :param pounds:[m
+[31m-        :return:[m
+[31m-        """[m
+[31m-        return round(pounds/2.20462262185, 1)[m
+[31m-[m
+     def send_complement(self, message: str):[m
+         """[m
+         Say a nice thing to chat ~2% of the time[m
+[36m@@ -740,15 +740,14 @@[m [mclass ActiveUserProcess(MyDatabase):[m
+                 self.send_info()[m
+             time_streamed += update_interval[m
+ [m
+[31m-    def send_info(self, attempts=0):[m
+[32m+[m[32m    def send_info(self):[m
+         """[m
+         Send stream info periodically[m
+         :return:[m
+         """[m
+         message = '!commands to see all the fun shit you can do. Don\'t forget to follow!'[m
+         try:[m
+[31m-            if not attempts:[m
+[31m-                self.sounds.send_sound('follow.mp3')[m
+[32m+[m[32m            self.sounds.send_sound('follow.mp3')[m
+             self.messaging.define_sock()[m
+             self.messaging.send_message(message)[m
+             print('Sent ad')[m
