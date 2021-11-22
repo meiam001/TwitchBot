@@ -13,7 +13,8 @@ import random
 import os
 from Parsers import get_channel, get_comment, get_user, parse_message, count_words, is_valid_comment
 from datetime import datetime
-
+from blinkytape import BlinkyTape, serial
+from dataclasses import dataclass
 timestamp_regex = '\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{6}'
 path_to_vlc = r'C:\Program Files\VideoLAN\VLC\vlc.exe'
 
@@ -25,11 +26,11 @@ class Conversions:
         container class for weight and temp conversions
         :param comment:
         """
-        self.comment = comment
-        self.to_convert = self.get_to_convert(comment)
+        self.comment: str = comment
+        self.to_convert: float = self.get_to_convert(comment)
 
     def __bool__(self):
-        if type(self.to_convert)==float:
+        if isinstance(self.to_convert, float):
             return True
         return False
 
@@ -51,6 +52,20 @@ class Conversions:
         :return: Fahrenheit
         """
         return round((c*1.8)+32, 1)
+
+    def mi_to_km(self, mi: float) -> float:
+        """
+
+        :param mi:
+        :return:
+        """
+        return round(mi * 1.60934, 1)
+
+    def km_to_mi(self, km: float) -> float:
+        """
+        :return:
+        """
+        return round(1.60934/km, 1)
 
     def kg_to_pounds(self, kg: float) -> float:
         """
@@ -74,14 +89,11 @@ class Conversions:
         if to_convert:
             return float(to_convert[0])
 
-
 class Cooldown(MyDatabase):
 
-    def __init__(self, tts_global=10, tts_users=180):
+    def __init__(self):
         super().__init__(dbtype='sqlite', dbname=f'{base_path}\\Database\\Chat.db')
         self.session = self.get_session(self.db_engine)
-        self.tts_global = tts_global
-        self.tts_user = tts_users
 
     def cooldown(self, gcd_cooldown_obj, cooldown_obj, message, current_time) -> str:
         """
@@ -99,20 +111,16 @@ class Cooldown(MyDatabase):
         else:
             return f'{gcd_cooldown_obj.length - int(global_diff)} seconds remaining before command available'
 
+@dataclass(order=True, frozen=True)
 class ShoutOuts:
-
-    def __init__(self, message: str, seen_today=0, sound='defaultshoutout.mp3'):
-        """
-
-        :param message:
-        :param seen_today:
-        :param sound:
-        """
-        self.seen_today = seen_today
-        self.message = message
-        self.sound = sound
+    message: str
+    seen_today: int = 0
+    sound: str = 'defaultshoutout.mp3'
 
 streamer_shoutouts = {
+    'PiMPleff'.lower():
+        ShoutOuts('The speed skating cyclist musician y\'all already know who it is.',
+                  sound='pimp.mp3'),
     'pedalgames':
         ShoutOuts('I once saw this man casually chat while doing a 33 minute alpe.',
                   sound='droctagonapus.mp3'),
@@ -180,6 +188,9 @@ chat_shoutouts = {
     'gijsvang':
         ShoutOuts('Holy shit it\'s @{0} quick get the cattle prod!',
                   sound='labmonkey.mp3'),
+    'OnlyRideUpHills':
+        ShoutOuts('Hey it\'s everyones favorite child sized adult @{0}!',
+                  sound='BigBoy.mp3'),
 }
 
 class Sounds:
@@ -191,18 +202,12 @@ class Sounds:
         self.base_path = base_path
         self.sounds = {'!vomit': 'vomit.mp3',
                        '!doicare': 'doicare.mp3',
+                       '!shotsfired': 'shots.mp3',
                        '!stopwhining': 'stop_whining.mp3',
                        '!kamehameha': 'kamehameha.mp3',
-                       '!spoonsproblem': 'premature_ejaculation.mp3',
                        '!daddy': 'daddy.mp3',
-                       '!goodbye': 'goodbye.mp3',
-                       '!pain': 'struggle.mp3',
-                       '!showtime': 'showtime.mp3',
-                       '!thug': 'thug.mp3',
-                       '!shit': 'shit.mp3',
                        '!nuclear': 'nuclear.mp3',
                        '!baka': 'baka.mp3',
-                       '!ekeseplosion': 'ekeseplosion.mp3',
                        '!nani?!': 'nani.mp3',
                        '!haha': 'haha.mp3',
                        '!heyboys': 'heyboys.mp3',
@@ -254,15 +259,44 @@ class Sounds:
         tts.save(file_path)
         return file_name
 
-    def send_sound(self, sound_filename):
+    def send_tts_text(self, text):
+        """
+        save TTS and play it
+        :param text:
+        :return:
+        """
+        speed_multiplier = self.get_speed_multiplier(text)
+        tts_file_path = self.save_tts(text)
+        self.send_sound(tts_file_path, f'--rate={speed_multiplier}')
+
+    @staticmethod
+    def get_speed_multiplier(text: str) -> float:
+        """
+        Play tts faster for longer messages
+        This gets the multiplier
+        :param text: Text to be sent to TTS, max len 500 for twitch
+        :return:
+        """
+        text_len = len(text)
+        if text_len < 150:
+            return 1.0
+        if text_len < 300:
+            return 1.5
+        if text_len < 400:
+            return 2.0
+        return 3.0
+
+    def send_sound(self, sound_filename, *flags):
         """
         PLAYS a sound file using VLC subprocess
         :param sound_filename: str: filename in Sounds folder
         :return:
         """
         file_path = f'{self.base_path}\Sounds\{sound_filename}'
+        flags = list(flags)
         p = Process(target=subprocess.run, args=(
-            [path_to_vlc, file_path, '--play-and-exit', '--qt-start-minimized'],)
+            [path_to_vlc, file_path, '--play-and-exit', '--qt-start-minimized'] + flags,
+            )
         )
         p.start()
 
@@ -276,7 +310,7 @@ class Messaging:
         self.channel = channel
         self.port = port
         self.sock: socket.socket
-        self.define_sock()
+        # self.define_sock()
 
     @staticmethod
     def _connect(server, token, nick, channel, port) -> socket.socket:
@@ -295,13 +329,28 @@ class Messaging:
             self.server, self.token, self.nick, self.channel, self.port
         )
 
+    def __enter__(self):
+        self.define_sock()
+        return self.sock
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.sock.close()
+
     def send_message(self, comment: str):
         """
         Sends a comment to chat defined in config file
+        Attempts to send message one additional time if fails
         :param comment: str: text to be sent
         :return:
         """
-        self.sock.send(f'PRIVMSG #{self.channel} :{comment}\n'.encode('utf-8'))
+        try:
+            self.sock.send(f'PRIVMSG #{self.channel} :{comment}\n'.encode('utf-8'))
+        except ConnectionAbortedError:
+            self.define_sock()
+            self.sock.send(f'PRIVMSG #{self.channel} :{comment}\n'.encode('utf-8'))
+        except ConnectionResetError:
+            self.define_sock()
+            self.sock.send(f'PRIVMSG #{self.channel} :{comment}\n'.encode('utf-8'))
 
     def PONG(self):
         threading.Thread(target=self._PONG)
@@ -313,6 +362,44 @@ class Messaging:
                 print('\n\n\n\nPONG SENT FROM MESSAGING\n\n\n\n')
                 self.sock.send(resp.replace('PING', 'PONG').encode('utf-8'))
 
+class BlinkyBoi:
+    def __init__(self, port):
+        self.bt = BlinkyTape(port)
+        self.commands = {'!police': self.police,
+                         '!blue': self.blue,
+                         '!red': self.red,
+                         '!purple': self.purple,
+                         '!green': self.green}
+
+    def police(self):
+        """
+        flash blue and red for a few seconds
+        :return:
+        """
+        time_on = 10
+        interval = .4
+        for i in range(int(time_on/interval/2)):
+            self.bt.alternate_colors((255, 0, 0), (0, 0, 255))
+            time.sleep(interval)
+            self.bt.alternate_colors((0, 0, 255), (255, 0, 0))
+            time.sleep(interval)
+        self.default()
+
+    def blue(self):
+        self.default()
+
+    def red(self):
+        self.bt.displayColor(255,0,0)
+
+    def purple(self):
+        self.bt.displayColor(255, 0, 255)
+
+    def green(self):
+        self.bt.displayColor(0,255,0)
+
+    def default(self):
+        self.bt.displayColor(0,0,255)
+
 class TwitchBot(MyDatabase):
     def __init__(self, dbtype='sqlite'):
         """
@@ -321,20 +408,17 @@ class TwitchBot(MyDatabase):
         self.twitch_url = 'https://twitch.tv/'
         self.check_out = f'Check them out at {self.twitch_url}'
         self.sounds = Sounds(base_path)
-        self.cooldowns = Cooldown(tts_global=10, tts_users=180)
-        sound_commands = ''
-        for sound in self.sounds:
-            sound_commands += f'{sound}, '
-        self.comment_keywords = {'!ftp': 'Literally no idea',
-                            # '!spoonbucks': self.send_stats,
+        self.cooldowns = Cooldown()
+        sound_commands = ', '.join(self.sounds)
+        self.comment_keywords = {'!ftp': 'Current FTP is 321 (3.8 wkg)',
+                            '!stats': self.send_stats,
                             '!zp': 'https://www.zwiftpower.com/profile.php?z=2886856',
                             '!strava': 'https://www.strava.com/athletes/58350447',
                             '!swearjar': self.swearjar,
                             '!time': self.send_time,
-                            '!convert': '!convert <number><lb/kg/f/c>',
+                            '!convert': '!convert <number><lb/kg/f/c/km/mi>',
                             '!sounds': sound_commands,
                             '!lurk': self.lurk,
-                            # '!rewards': self.rewards,
                             '!chattyboi': self.chatty_boi,
                             '!trainer': 'My trainer is the Saris H3. I love it',
                             '!bike': 'I ride the 2020 Trek Emonda 105 groupset with Reynolds Blacklabel 65 wheels'}
@@ -355,6 +439,7 @@ class TwitchBot(MyDatabase):
         self.messaging = Messaging(
             channel=config.channel, server=config.server, nick=config.nick, port=config.port, token=config.token
         )
+        self.messaging.define_sock()
         self.sock = self.messaging.sock
         self.channel_obj = None
         if config.channel == 'slowspoon':
@@ -366,9 +451,17 @@ class TwitchBot(MyDatabase):
         for user in self.session.query(ActiveUsers):
             self.session.delete(user)
             self.session.commit()
-        self.reward_handler = RewardHandler(
-            base_path=config.base_path, channel=config.channel, session=self.session
-        )
+        try:
+            self.bb = BlinkyBoi('COM6')
+            self.bb.default()
+            self.comment_keywords['!lights'] = self._define_light_commands()
+            self.lights = True
+        except serial.serialutil.SerialException:
+            print("No blinkylight detected")
+            self.lights = False
+
+    def _define_light_commands(self):
+        return ', '.join(self.bb.commands.keys())
 
     def main(self):
         """
@@ -398,14 +491,6 @@ class TwitchBot(MyDatabase):
         """
         return ', '.join(list(comment_keywords.keys())+['!tts <message>'])
 
-    def send_message(self, comment: str):
-        """
-        Sends a comment to chat defined in config file
-        :param comment: str: text to be sent
-        :return:
-        """
-        self.sock.send(f'PRIVMSG #{config.channel} :{comment}\n'.encode('utf-8'))
-
     def read_chat(self):
         """
         Waits for messages to come into chat
@@ -422,22 +507,50 @@ class TwitchBot(MyDatabase):
                     message = parse_message(resp)
                     if is_valid_comment(message):
                         self.save_chat(message)
-                        if self.my_chat:
+                        if self.my_chat and not self.timeout_spam(message):
                             self.respond_to_message(message)
                             self.give_shoutout(message)
                             self.send_complement(message)
                             self.check_tts(message)
                             self.check_sound(message)
                             self.conversions(message)
-                            reward_response = self.reward_handler.main(message)
-                            if reward_response and isinstance(reward_response, str):
-                                self.send_message(reward_response)
+                            self.check_lights(message)
                     print('='*50)
             except Exception as e:
                 traceback.print_exc()
                 time.sleep(retry_time)
                 self.messaging.define_sock()
                 self.sock = self.messaging.sock
+
+    def check_lights(self, message):
+        """
+
+        :param message:
+        :return:
+        """
+        comment = get_comment(message).lower()
+        if self.lights and comment in self.bb.commands:
+            try:
+                p = Process(target=self.bb.commands[comment]())
+                p.start()
+            except:
+                print("Lights DISCONNECTED")
+                self.lights = False
+
+    def timeout_spam(self, message: str) -> bool:
+        """
+        bigfollows is commonly bot spammed,
+        automatically timeout any user who uses it in their comment
+        :param message:
+        :return:
+        """
+        comment = get_comment(message)
+        if re.search('bigfollow', comment, flags=re.IGNORECASE):
+            user = get_user(message)
+            print('bigfollow thingy')
+            self.messaging.send_message(f'/timeout {user} 60')
+            return True
+        return False
 
     def conversions(self, message: str) -> None:
         """
@@ -446,17 +559,18 @@ class TwitchBot(MyDatabase):
         :return: None
         """
         comment = get_comment(message)
-        if comment.startswith('!convert'):
+        keyword = '!convert'
+        if comment.startswith(keyword):
             user = get_user(message)
             if self.proper_conversion_comment(comment):
                 conversion = Conversions(comment)
                 if conversion:
                     return_message = self.get_conversion_return_message(conversion)
-                    self.send_message(return_message + f' @{user}')
-            else:
-                self.send_message(
+                    self.messaging.send_message(return_message + f' @{user}')
+            elif len(comment) != len(keyword):
+                self.messaging.send_message(
                     f'@{user} The proper format is <Number to convert><Unit to convert>. '
-                    'Supports lb/kg/f/c'
+                    'Supports lb/kg/f/c/mi/km'
                 )
 
     def proper_conversion_comment(self, comment) -> bool:
@@ -499,6 +613,18 @@ class TwitchBot(MyDatabase):
                 return_message = f'{to_convert} lbs is {kg} kg'
             else:
                 return_message = 'Choose a number between 0 and 100000 ya dingus'
+        elif comment.endswith('mi'):
+            if 0 <= to_convert < 1000:
+                kg = conversion.mi_to_km(to_convert)
+                return_message = f'{to_convert} mi is {kg} km'
+            else:
+                return_message = 'Choose a number between 0 and 10000 ya dingus'
+        elif comment.endswith('km'):
+            if 0 <= to_convert < 1000:
+                kg = conversion.km_to_mi(to_convert)
+                return_message = f'{to_convert} km is {kg} mi'
+            else:
+                return_message = 'Choose a number between 0 and 1000 ya dingus'
         return return_message
 
     def send_complement(self, message: str):
@@ -507,11 +633,11 @@ class TwitchBot(MyDatabase):
         :param message: IRC formatted message
         :return:
         """
-        if random.randint(0, 100) < 2:
+        if random.randint(0, 100) == 1:
             user = get_user(message)
             complement_index = random.randint(0, len(self.complements)-1)
             complement = self.complements[complement_index].format(user)
-            self.send_message(complement)
+            self.messaging.send_message(complement)
 
     def send_time(self, *args):
         """
@@ -522,7 +648,7 @@ class TwitchBot(MyDatabase):
         now = datetime.now()
         current_time = now.strftime("%H:%M:%S")
         send_string = f'The current time is {current_time} (west coast US)'
-        self.send_message(send_string)
+        self.messaging.send_message(send_string)
 
     def lurk(self, *args):
         """
@@ -532,12 +658,12 @@ class TwitchBot(MyDatabase):
         """
         message = args[0]
         user = get_user(message)
-        self.send_message(f'Thanks for stopping by @{user}! '
+        self.messaging.send_message(f'Thanks for stopping by @{user}! '
                           f'Remember, my followers are objectively better than other people.')
 
     # def rewards(self, *args):
-    #     # self.send_message('!tts <message> - 10 SpoonBucks')
-    #     self.send_message('!wordcount <username> <word or regular expression> - 10 SpoonBucks, '
+    #     # self.messaging.send_message('!tts <message> - 10 SpoonBucks')
+    #     self.messaging.send_message('!wordcount <username> <word or regular expression> - 10 SpoonBucks, '
     #                       '!breakaway (Attack from the gun in next race, recorded on GoPro and stream after)'
     #                       ' - 1000 SpoonBucks')
 
@@ -552,11 +678,11 @@ class TwitchBot(MyDatabase):
         user = get_user(message)
         if comment and comment in self.comment_keywords:
             if isinstance(self.comment_keywords[comment], str):
-                self.send_message(self.comment_keywords[comment])
+                self.messaging.send_message(self.comment_keywords[comment])
             else:
                 self.comment_keywords[comment](message)
         elif re.search('sprint', comment, flags=re.IGNORECASE) and random.randint(0,100) < 20:
-            self.send_message(f'@{user} shutup nerd')
+            self.messaging.send_message(f'@{user} shutup nerd')
             self.sounds.send_sound('shutup.mp3')
 
     def give_shoutout(self, message: str):
@@ -580,7 +706,7 @@ class TwitchBot(MyDatabase):
             if chatter.sound:
                 self.sounds.send_sound(chatter.sound)
         if response:
-            self.send_message(response)
+            self.messaging.send_message(response)
 
     def check_sound(self, message):
         """
@@ -606,7 +732,7 @@ class TwitchBot(MyDatabase):
             cd_type = 'tts_user'
             current_time = time.time()
             text = self.fix_tts_text(get_comment(message))
-            length = len(text) + 120
+            length = 60
             gcd_cooldown_obj = self.get_gcd(message, self.session)
             cooldown_obj = self.get_cooldown_obj(
                 message=message, cd_type=cd_type, cd_length=length, session=self.session
@@ -616,26 +742,19 @@ class TwitchBot(MyDatabase):
                 current_time=current_time
             )
             if not cooldown:
-                if len(text) < 225:
-                    self.send_tts_text(text)
-                    self.update_gcd(current_time, self.session, message)
-                else:
-                    user = get_user(message)
-                    self.send_message(f'Don\'t be annoying @{user}')
+                self.sounds.send_tts_text(text)
+                self.update_gcd(current_time, self.session, message)
                 self.update_user_cd(cooldown_obj, current_time, self.session, length=length)
             else:
-                self.send_message(cooldown)
+                self.messaging.send_message(cooldown)
 
-    def fix_tts_text(self, text):
+    @staticmethod
+    def fix_tts_text(text):
         char_whitelist = '[^A-Za-z0-9\',.\s\?]+'
         text = text[4:]
         text = re.sub('!', '.', text)
         text = re.sub(char_whitelist, '', text)
         return text
-
-    def send_tts_text(self, text):
-        tts_file_path = self.sounds.save_tts(text)
-        self.sounds.send_sound(tts_file_path)
 
     def send_stats(self, message):
         stats = self.get_channel_stats_obj(message, session=self.session)
@@ -646,7 +765,7 @@ class TwitchBot(MyDatabase):
             send_string = 'You have NO POINTS GET THE F*CK OUT (jk). ' \
                           'But seriously you have no points, hang out in chat more and ' \
                           'don\'t forget to keep your volume on.'
-        self.send_message(send_string)
+        self.messaging.send_message(send_string)
 
     def swearjar(self, message: str):
         user = get_user(message)
@@ -656,7 +775,7 @@ class TwitchBot(MyDatabase):
         swear_ratio = str(times_sworn/len(comment_list))
         if len(swear_ratio) >= 4:
             swear_ratio = swear_ratio[:4]
-        self.send_message(f'You have sworn {times_sworn} times.'
+        self.messaging.send_message(f'You have sworn {times_sworn} times.'
                           f' Your ratio of swear words to total comments is {swear_ratio}')
 
     def chatty_boi(self, message: str):
@@ -670,7 +789,7 @@ class TwitchBot(MyDatabase):
         number1 = top_commenters[0]
         number2 = top_commenters[1]
         number3 = top_commenters[2]
-        self.send_message(f'@{number1.user} is the chattiest boi, having sent {number1[1]} messages.'
+        self.messaging.send_message(f'@{number1.user} is the chattiest boi, having sent {number1[1]} messages.'
                           f' #2: @{number2.user} with {number2[1]}.'
                           f' #3: @{number3.user} with {number3[1]}')
 
@@ -682,7 +801,7 @@ class TwitchBot(MyDatabase):
         """
         return_comment = self.write_message(message, self.session)
         if self.my_chat and return_comment:
-            self.send_message(return_comment)
+            self.messaging.send_message(return_comment)
             self.sounds.send_sound('cheering.mp3')
 
     def is_not_keyword(self, message: str) -> bool:
@@ -747,89 +866,13 @@ class ActiveUserProcess(MyDatabase):
         """
         message = '!commands to see all the fun shit you can do. Don\'t forget to follow!'
         try:
-            self.sounds.send_sound('follow.mp3')
-            self.messaging.define_sock()
-            self.messaging.send_message(message)
-            print('Sent ad')
+            with self.messaging as _:
+                time.sleep(.1)
+                self.sounds.send_sound('follow.mp3')
+                self.messaging.send_message(message)
+                print('Sent ad')
         except:
             traceback.print_exc()
-
-class RewardHandler(MyDatabase):
-
-    def __init__(self, base_path: str, channel: str, session):
-        self.session = session
-        self.base_path = base_path
-        self.channel = channel
-
-    def main(self, message: str):
-        user = get_user(message)
-        comment = get_comment(message)
-        # if re.match('!tts', comment, flags=re.IGNORECASE):
-        #     return self.play_sound(message)
-        if re.match('!wordcount', comment, flags=re.IGNORECASE):
-            return self.count_words(message)
-        # if re.match('!breakaway', comment, flags=re.IGNORECASE):
-        #     return self.breakaway(message)
-        return ''
-
-    def count_words(self, message):
-        """
-
-        :param message:
-        :return:
-        """
-        points_req = 10
-        return_response = 'You don\'t have enough points for that ya silly'
-        comment = get_comment(message)
-        user = get_user(message)
-        split_comment = comment.split(' ')
-        if len(split_comment) != 3:
-            return 'Naaaa ya goof the format is "!wordcount <valid username> <word>"'
-        target_user = split_comment[1]
-        target_user_obj = self.get_user_obj(target_user, self.session)
-        if not target_user_obj:
-            return f'Naa ya goof, {target_user} isn\'t a valid username!'
-        if self.has_enough_points(message, points_req):
-            comments = self.get_users_comments(user=target_user, channel=self.channel, session=self.session)
-            word = split_comment[-1]
-            times_said = count_words(comments, [word])
-            new_value = self.subtract_points(
-                user=user, channel=self.channel, points_to_subtract=points_req, session=self.session
-            )
-            return_response = f'@{target_user} has said {word} {times_said} times! {new_value} Spoon Bucks remaining!'
-        self.session.close()
-        return return_response
-
-    def breakaway(self, message):
-        points_req = 1000
-        user = get_user(message)
-        return_response = 'You don\'t have enough points for that ya silly'
-        if self.has_enough_points(message, points_req):
-            target_user = self.get_user_obj(self.channel, self.session)
-            stats_obj = self.get_stats_obj(target_user, self.channel, '!breakaway', self.session)
-            if not stats_obj.stat_value:
-                stats_obj.stat_value = '1'
-                self.session.add(stats_obj)
-            else:
-                stats_obj.stat_value = str(int(stats_obj.stat_value)+1)
-            self.subtract_points(
-                user=user, channel=self.channel, points_to_subtract=points_req, session=self.session
-            )
-            return_response = f'I now owe {stats_obj.stat_value} attacks from the gun, ya dick.'
-        self.session.commit()
-        return return_response
-
-    def has_enough_points(self, message, points_req) -> bool:
-        user = get_user(message)
-        user_obj = self.get_user_obj(user=user, session=self.session)
-        stats_obj = self.get_stats_obj(
-            user=user_obj, channel=self.channel, stat='channel_points', session=self.session
-        )
-        user_points = int(stats_obj.stat_value)
-        print('points: ', user_points)
-        if user_points > points_req:
-            return True
-        return False
 
 if __name__ == '__main__':
     pass

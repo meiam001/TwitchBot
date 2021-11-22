@@ -6,5 +6,5 @@ import traceback
 #     except Exception:
 #         raise
 
-# stuff()
-print(5)
+from blinkytape import BlinkyTape
+bb = BlinkyTape('COM6')

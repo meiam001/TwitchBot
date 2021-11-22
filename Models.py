@@ -227,7 +227,9 @@ class MyDatabase:
         cooldown_obj = session.query(Cooldowns)\
             .where(Cooldowns.user_id==user_obj.user_id).where(Cooldowns.cd_type==cd_type).first()
         if not cooldown_obj:
-            cooldown_obj = self.insert_cooldown(message, session, cd_length, cd_type, user_obj.user_id)
+            cooldown_obj = self.insert_cooldown(
+                message, session, cd_length, cd_type, user_obj.user_id
+            )
         return cooldown_obj
 
     def insert_cooldown(self, message: str, session, cd_length, cd_type, user_id=None) -> Cooldowns:
