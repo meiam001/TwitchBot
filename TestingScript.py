@@ -1,28 +1,22 @@
+import pyttsx3
+from gtts import gTTS
+import subprocess
+import time
+text = """testing a longer thingy """
+engine = pyttsx3.init()
+st1 = time.time()
+fn1 = 'filee.mp3'
+engine.save_to_file(text, fn1)
+et1 = time.time()
+start_time2 = time.time()
+tts = gTTS(text=text, lang='en')
+tts.save('file.mp3')
+end_time2 = time.time()
 
+print(f'microsoft time: {et1-st1}|google time:{end_time2-start_time2}')
+engine.runAndWait()
+engine.getProperty('rate')
+path_to_vlc = r'C:\Program Files\VideoLAN\VLC\vlc.exe'
+# subprocess.run([path_to_vlc, fn1,  '--qt-start-minimized'])
+# subprocess.run([path_to_vlc, 'file.mp3', '--play-and-exit', '--qt-start-minimized'])
 
-from multiprocessing import Queue, Process
-# import time
-
-# async def worker(name, queue):
-#     while True:
-#         sleep_for = await queue.get()
-#         await asyncio.sleep(sleep_for)
-#         queue.task_done()
-#         print(f'{name} has slept for {sleep_for:0.2f} seconds')
-#
-# def wait(sec):
-#     print(f'Waiting {sec} seconds')
-#     time.sleep(sec)
-#     print(f'Done with {sec} sec process')
-
-async def main():
-    print('Hello ...')
-    await asyncio.sleep(5)
-    print('... World!')
-
-if __name__ == '__main__':
-    import asyncio
-    asyncio.run(main())
-    # q = Queue()
-    # p = Process(target=f, args=(q,5))
-    # p.start()

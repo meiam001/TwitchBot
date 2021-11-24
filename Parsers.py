@@ -9,7 +9,6 @@ def parse_message(resp: str) -> str:
     regex_parse = ':([a-zA-Z0-9_]*)\!.*@.*\.tmi\.twitch\.tv PRIVMSG #([a-zA-Z0-9_]*) :(.*)'
     if re.search(regex_parse, resp):
         resp = str(resp)
-        print(resp.strip())
         username, channel, message = re.search(regex_parse, resp).groups()
         return f"Channel: {channel} \nUsername: {username} \nMessage: {message}"
     else:

@@ -3,26 +3,25 @@ import re
 from Models import Channels, MyDatabase, ActiveUsers
 import subprocess
 from setup import Config
-from gtts import gTTS
 import traceback
 import threading
+import pyttsx3
 import time
 from multiprocessing import Process
 from swearwords import swear_words
 import random
-import dill
 import os
 from Parsers import get_channel, get_comment, get_user, parse_message, count_words, is_valid_comment
 from datetime import datetime
 from blinkytape import BlinkyTape, serial
-from ShoutOuts import ShoutOuts, streamer_shoutouts, chat_shoutouts
-
+from ShoutOuts import streamer_shoutouts, chat_shoutouts
 
 
 timestamp_regex = '\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{6}'
 path_to_vlc = r'C:\Program Files\VideoLAN\VLC\vlc.exe'
 
 swear_words_regex = '|'.join(swear_words)
+
 
 class Conversions:
     def __init__(self, comment: str):
@@ -100,6 +99,7 @@ class Conversions:
         if to_convert:
             return float(to_convert[0])
 
+
 class Cooldown:
 
     def __init__(self):
@@ -127,6 +127,7 @@ class Cooldown:
                        f'{cooldown_obj.length - int(user_diff)} seconds before you can do that'
         else:
             return f'{gcd_cooldown_obj.length - int(global_diff)} seconds remaining before command available'
+
 
 class Sounds:
 
@@ -161,66 +162,29 @@ class Sounds:
             return True
         return False
 
-    def generate_tts_filename(self, file_name='tts0.mp3') -> str:
-        """
-        Recursively checks for file names for TTS,
-        If file is currently being played add one and try again.
-        Otherwise delete file and return current file_name
-        :param file_name:
-        :return: str: unused file name for text to speech
-        """
-        sounds_path = os.path.join(self.base_path, 'Sounds')
-        sounds_dir = os.listdir(sounds_path)
-        if file_name in sounds_dir:
-            file_path = os.path.join(sounds_path, file_name)
-            try:
-                os.remove(file_path)
-            except PermissionError:
-                file_number = re.search('\d+', file_name)
-                file_number = (int(file_number.group(0)) + 1)
-                file_name = re.sub('\d+', str(file_number), file_name, count=1)
-                return self.generate_tts_filename(file_name)
-        return file_name
-
-    def save_tts(self, text: str) -> str:
-        """
-        generates a TTS file and returns the file name
-        :param text: desired TTS
-        :return: str: file path to tts file
-        """
-        file_name = self.generate_tts_filename()
-        tts = gTTS(text=text, lang='en')
-        file_path = os.path.join(self.base_path, 'Sounds', file_name)
-        tts.save(file_path)
-        return file_name
-
-    def send_tts_text(self, text):
-        """
-        save TTS and play it
-        :param text:
-        :return:
-        """
-        new_process = False
-        speed_multiplier = self.get_speed_multiplier(text)
-        tts_file_path = self.save_tts(text)
-        self.send_sound(tts_file_path, new_process, f'--rate={speed_multiplier}')
-
     @staticmethod
-    def get_speed_multiplier(text: str) -> float:
+    def get_speed_multiplier(text: str, max_len=500) -> float:
         """
         Play tts faster for longer messages
         This gets the multiplier
         :param text: Text to be sent to TTS, max len 500 for twitch
+        :param max_len:
         :return:
         """
         text_len = len(text)
-        if text_len < 150:
-            return 1.0
-        if text_len < 300:
-            return 1.5
-        if text_len < 400:
-            return 2.0
-        return 3.0
+        match text_len:
+            case text_len if text_len < max_len*.2:
+                return 1.0
+            case text_len if text_len < max_len*.3:
+                return 1.2
+            case text_len if text_len < max_len*.4:
+                return 1.3
+            case text_len if text_len < max_len*.6:
+                return 1.5
+            case text_len if text_len < max_len*.8:
+                return 1.7
+            case _:
+                return 2.5
 
     def send_sound(self, sound_filename, new_process=True, *flags):
         """
@@ -277,7 +241,7 @@ class Messaging:
                 message = parse_message(resp)
                 if is_valid_comment(message):
                     return message
-        except Exception as e:
+        except:
             traceback.print_exc()
             time.sleep(retry_time)
             self.define_sock()
@@ -361,8 +325,11 @@ class BlinkyBoi:
 
 
 class TTSProcess(MyDatabase):
-    def __init__(self, dbtype='sqlite'):
+    def __init__(self, dbtype='sqlite', base_path='.'):
         super().__init__(dbtype=dbtype, dbname=f'{base_path}\\Database\\Chat.db')
+        self.engine = pyttsx3.init()
+        self.engine.setProperty('rate', 150)
+        self.base_path = base_path
         self.session = self.get_session(self.db_engine)
         self.sounds = Sounds(base_path)
         self.messaging = Messaging(
@@ -401,7 +368,7 @@ class TTSProcess(MyDatabase):
                 current_time=current_time
             )
             if not cooldown:
-                self.sounds.send_tts_text(text)
+                self.send_tts_text(text)
                 self.update_gcd(current_time, self.session, message)
                 self.update_user_cd(cooldown_obj, current_time, self.session, length=length)
             else:
@@ -414,6 +381,53 @@ class TTSProcess(MyDatabase):
         text = re.sub('!', '.', text)
         text = re.sub(char_whitelist, '', text)
         return text
+
+    def generate_tts_filename(self, file_name='tts0.mp3') -> str:
+        """
+        Recursively checks for file names for TTS,
+        If file is currently being played add one and try again.
+        Otherwise delete file and return current file_name
+        :param file_name:
+        :return: str: unused file name for text to speech
+        """
+        sounds_path = os.path.join(self.base_path, 'Sounds')
+        sounds_dir = os.listdir(sounds_path)
+        if file_name in sounds_dir:
+            file_path = os.path.join(sounds_path, file_name)
+            try:
+                os.remove(file_path)
+            except PermissionError:
+                file_number = re.search('\d+', file_name)
+                file_number = (int(file_number.group(0)) + 1)
+                file_name = re.sub('\d+', str(file_number), file_name, count=1)
+                return self.generate_tts_filename(file_name)
+        return file_name
+
+    def save_tts(self, text: str) -> str:
+        """
+        generates a TTS file and returns the file name
+        :param text: desired TTS
+        :return: str: file path to tts file
+        """
+        file_name = self.generate_tts_filename()
+        # tts = gTTS(text=text, lang='en')
+        file_path = os.path.join(self.base_path, 'Sounds', file_name)
+        self.engine.save_to_file(text, file_path)
+        self.engine.runAndWait()
+        # tts.save(file_path)
+        return file_name
+
+    def send_tts_text(self, text):
+        """
+        save TTS and play it
+        :param text:
+        :return:
+        """
+        new_process = False
+        speed_multiplier = self.sounds.get_speed_multiplier(text)
+        tts_file_path = self.save_tts(text)
+        self.sounds.send_sound(tts_file_path, new_process, f'--rate={speed_multiplier}')
+
 
 
 class TwitchBot(MyDatabase):
@@ -526,8 +540,6 @@ class TwitchBot(MyDatabase):
                     self.check_sound(message)
                     self.conversions(message)
                     self.check_lights(message)
-                print('=' * 50)
-            print('hi')
 
     def check_lights(self, message):
         """
