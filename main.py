@@ -10,11 +10,15 @@ import time
 from multiprocessing import Process
 from swearwords import swear_words
 import random
+import dill
 import os
 from Parsers import get_channel, get_comment, get_user, parse_message, count_words, is_valid_comment
 from datetime import datetime
 from blinkytape import BlinkyTape, serial
-from dataclasses import dataclass
+from ShoutOuts import ShoutOuts, streamer_shoutouts, chat_shoutouts
+
+
+
 timestamp_regex = '\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{6}'
 path_to_vlc = r'C:\Program Files\VideoLAN\VLC\vlc.exe'
 
@@ -37,23 +41,26 @@ class Conversions:
     def __repr__(self):
         return f'to_convert: {self.to_convert}'
 
-    def f_to_c(self, f: float) -> float:
+    @staticmethod
+    def f_to_c(f: float) -> float:
         """
         converts Fahrenheit to Celsius
         :param f: Fahrenheit
         :return: Celsius
         """
-        return round((f-32)*(5/9), 1)
+        return round((f - 32) * (5 / 9), 1)
 
-    def c_to_f(self, c: float)->float:
+    @staticmethod
+    def c_to_f(c: float) -> float:
         """
         converts celsius to fahrenheit
         :param c: Celsius
         :return: Fahrenheit
         """
-        return round((c*1.8)+32, 1)
+        return round((c * 1.8) + 32, 1)
 
-    def mi_to_km(self, mi: float) -> float:
+    @staticmethod
+    def mi_to_km(mi: float) -> float:
         """
 
         :param mi:
@@ -61,44 +68,53 @@ class Conversions:
         """
         return round(mi * 1.60934, 1)
 
-    def km_to_mi(self, km: float) -> float:
+    @staticmethod
+    def km_to_mi(km: float) -> float:
         """
         :return:
         """
-        return round(1.60934/km, 1)
+        return round(1.60934 / km, 1)
 
-    def kg_to_pounds(self, kg: float) -> float:
+    @staticmethod
+    def kg_to_pounds(kg: float) -> float:
         """
 
         :param kg:
         :return:
         """
-        return round(2.20462262185*kg, 1)
+        return round(2.20462262185 * kg, 1)
 
-    def pounds_to_kg(self, pounds: float) -> float:
+    @staticmethod
+    def pounds_to_kg(pounds: float) -> float:
         """
 
         :param pounds:
         :return:
         """
-        return round(pounds/2.20462262185, 1)
+        return round(pounds / 2.20462262185, 1)
 
-    def get_to_convert(self, comment: str) -> float:
+    @staticmethod
+    def get_to_convert(comment: str) -> float:
         to_convert = comment[len('!convert'):].strip().lower()
         to_convert = re.match('-?\d+(\.\d+)?', to_convert)
         if to_convert:
             return float(to_convert[0])
 
-class Cooldown(MyDatabase):
+class Cooldown:
 
     def __init__(self):
-        super().__init__(dbtype='sqlite', dbname=f'{base_path}\\Database\\Chat.db')
-        self.session = self.get_session(self.db_engine)
-
-    def cooldown(self, gcd_cooldown_obj, cooldown_obj, message, current_time) -> str:
         """
 
+        """
+
+    @staticmethod
+    def cooldown(gcd_cooldown_obj, cooldown_obj, message, current_time) -> str:
+        """
+
+        :param gcd_cooldown_obj:
+        :param cooldown_obj:
         :param message:
+        :param current_time:
         :return:
         """
         global_diff = current_time - gcd_cooldown_obj.last_used
@@ -107,91 +123,10 @@ class Cooldown(MyDatabase):
             if user_diff > cooldown_obj.length:
                 return ''
             else:
-                return f'@{get_user(message)} you still got {cooldown_obj.length - int(user_diff)} seconds before you can do that'
+                return f'@{get_user(message)} you still got ' \
+                       f'{cooldown_obj.length - int(user_diff)} seconds before you can do that'
         else:
             return f'{gcd_cooldown_obj.length - int(global_diff)} seconds remaining before command available'
-
-@dataclass(order=True, frozen=True)
-class ShoutOuts:
-    message: str
-    seen_today: int = 0
-    sound: str = 'defaultshoutout.mp3'
-
-streamer_shoutouts = {
-    'PiMPleff'.lower():
-        ShoutOuts('The speed skating cyclist musician y\'all already know who it is.',
-                  sound='pimp.mp3'),
-    'pedalgames':
-        ShoutOuts('I once saw this man casually chat while doing a 33 minute alpe.',
-                  sound='droctagonapus.mp3'),
-    'LepageMaster'.lower():
-        ShoutOuts('This man is bigger than a barge, the real Gaston.',
-                  sound='policeprincess.mp3'),
-    'hardclaws':
-        ShoutOuts('Fuck this guy and his silly accent and 1600 watt sprint.',
-                  sound='princess.mp3'),
-    'cyclingwithdoc':
-        ShoutOuts('The army vet with the mostest is here!',
-                  sound='smoke.mp3'),
-    'zavarise':
-        ShoutOuts('Everyones favorite DILF is here!',
-                  sound='daddy.mp3'),
-    'locutus_of_dei':
-        ShoutOuts('His number of grey hairs is only second to his watts,'),
-    'bulletfall':
-        ShoutOuts('King on the streets queen in the sheets.',
-                  sound='moneycount.mp3'),
-    'felttie':
-       ShoutOuts('One of the few respectable zwifters is here!'),
-    'ray_space':
-        ShoutOuts('His shorts may be short and he may be slow but at least he\'s balding!',
-                  sound='howdigethere.mp3'),
-    'barney_nz':
-        ShoutOuts('If you ever need to be emasculated by someones pure watts I know just the guy!',
-                  sound='nuclear.mp3'),
-    'drweebles':
-        ShoutOuts('This man\'s raw watts could power a city!'),
-    'whyskipdodis':
-        ShoutOuts('The actual GOAT of WTRL!'),
-    'generalelost':
-        ShoutOuts('He does zwift, he plays games, he\'s personally responsible for thousands in charitable donations!'),
-    'tepilobium':
-        ShoutOuts('The demon of A+ is here!'),
-    'ladysirene':
-        ShoutOuts('The beauty of burlesque is here!',
-                  sound='heygirl.mp3'),
-    'pookiebutt':
-        ShoutOuts('The bionic man!'),
-    'marblehead9':
-        ShoutOuts('His in game Zwift fro is almost as cool as him!'),
-    'bikebeast':
-        ShoutOuts('Biggest biceps in the zwift category!',
-                  sound='bb.mp3'),
-    'ayeetea':
-        ShoutOuts('Blazing fast in iRacing, embarrassingly slow in zwift!'),
-    'kyoshirogaming':
-        ShoutOuts('Dude takes suffering on the bike to the next level!',
-                  sound='kyo.mp3'),
-    'debbieinshape':
-        ShoutOuts('The beauty of the bike!',
-                  sound='heygirl.mp3')
-    # 'slowspoon':
-    #     ShoutOuts('smoke.mp3', sound='smoke.mp3')
-}
-
-chat_shoutouts = {
-    'MC_Squared_Racing'.lower():
-        ShoutOuts('Say hi to the world record holder for oldest man to operate a computer @{0}!'),
-    'notmashingalwaysmyturn':
-        ShoutOuts('Best put respect on his name @{0} is here!',
-                  sound='dadadada.mp3'),
-    'gijsvang':
-        ShoutOuts('Holy shit it\'s @{0} quick get the cattle prod!',
-                  sound='labmonkey.mp3'),
-    'OnlyRideUpHills':
-        ShoutOuts('Hey it\'s everyones favorite child sized adult @{0}!',
-                  sound='BigBoy.mp3'),
-}
 
 class Sounds:
 
@@ -242,7 +177,7 @@ class Sounds:
                 os.remove(file_path)
             except PermissionError:
                 file_number = re.search('\d+', file_name)
-                file_number = (int(file_number.group(0))+1)
+                file_number = (int(file_number.group(0)) + 1)
                 file_name = re.sub('\d+', str(file_number), file_name, count=1)
                 return self.generate_tts_filename(file_name)
         return file_name
@@ -265,9 +200,10 @@ class Sounds:
         :param text:
         :return:
         """
+        new_process = False
         speed_multiplier = self.get_speed_multiplier(text)
         tts_file_path = self.save_tts(text)
-        self.send_sound(tts_file_path, f'--rate={speed_multiplier}')
+        self.send_sound(tts_file_path, new_process, f'--rate={speed_multiplier}')
 
     @staticmethod
     def get_speed_multiplier(text: str) -> float:
@@ -286,19 +222,26 @@ class Sounds:
             return 2.0
         return 3.0
 
-    def send_sound(self, sound_filename, *flags):
+    def send_sound(self, sound_filename, new_process=True, *flags):
         """
-        PLAYS a sound file using VLC subprocess
-        :param sound_filename: str: filename in Sounds folder
+
+        :param sound_filename: sound filename
+        :param new_process: determines if a new process is started or if current process
+            waits for sound to complete
+        :param flags: VLC flags
         :return:
         """
         file_path = f'{self.base_path}\Sounds\{sound_filename}'
         flags = list(flags)
-        p = Process(target=subprocess.run, args=(
-            [path_to_vlc, file_path, '--play-and-exit', '--qt-start-minimized'] + flags,
+        if new_process:
+            sp = Process(target=subprocess.run, args=(
+                [path_to_vlc, file_path, '--play-and-exit', '--qt-start-minimized'] + flags,
             )
-        )
-        p.start()
+                        )
+            sp.start()
+            return sp
+        subprocess.run([path_to_vlc, file_path, '--play-and-exit', '--qt-start-minimized'] + flags)
+
 
 class Messaging:
 
@@ -323,6 +266,21 @@ class Messaging:
         sock.send(f"NICK {nick}\r\n".encode('utf-8'))
         sock.send(f"JOIN #{channel}\r\n".encode('utf-8'))
         return sock
+
+    def read_chat(self) -> str:
+        retry_time = 5
+        try:
+            resp = self.sock.recv(2048).decode('utf-8')
+            if resp.startswith('PING'):
+                self.sock.send(resp.replace('PING', 'PONG').encode('utf-8'))
+            elif len(resp) > 0:
+                message = parse_message(resp)
+                if is_valid_comment(message):
+                    return message
+        except Exception as e:
+            traceback.print_exc()
+            time.sleep(retry_time)
+            self.define_sock()
 
     def define_sock(self):
         self.sock = self._connect(
@@ -362,6 +320,7 @@ class Messaging:
                 print('\n\n\n\nPONG SENT FROM MESSAGING\n\n\n\n')
                 self.sock.send(resp.replace('PING', 'PONG').encode('utf-8'))
 
+
 class BlinkyBoi:
     def __init__(self, port):
         self.bt = BlinkyTape(port)
@@ -378,7 +337,7 @@ class BlinkyBoi:
         """
         time_on = 10
         interval = .4
-        for i in range(int(time_on/interval/2)):
+        for i in range(int(time_on / interval / 2)):
             self.bt.alternate_colors((255, 0, 0), (0, 0, 255))
             time.sleep(interval)
             self.bt.alternate_colors((0, 0, 255), (255, 0, 0))
@@ -389,16 +348,73 @@ class BlinkyBoi:
         self.default()
 
     def red(self):
-        self.bt.displayColor(255,0,0)
+        self.bt.displayColor(255, 0, 0)
 
     def purple(self):
         self.bt.displayColor(255, 0, 255)
 
     def green(self):
-        self.bt.displayColor(0,255,0)
+        self.bt.displayColor(0, 255, 0)
 
     def default(self):
-        self.bt.displayColor(0,0,255)
+        self.bt.displayColor(0, 0, 255)
+
+
+class TTSProcess(MyDatabase):
+    def __init__(self, dbtype='sqlite'):
+        super().__init__(dbtype=dbtype, dbname=f'{base_path}\\Database\\Chat.db')
+        self.session = self.get_session(self.db_engine)
+        self.sounds = Sounds(base_path)
+        self.messaging = Messaging(
+            channel=config.channel, server=config.server, nick=config.nick,
+            port=config.port, token=config.token
+        )
+        self.messaging.define_sock()
+        self.cooldowns = Cooldown()
+        ttsp = threading.Thread(target=self.read_chat)
+        ttsp.start()
+
+    def read_chat(self):
+        while True:
+            message = self.messaging.read_chat()
+            if message:
+                self.check_tts(message)
+
+    def check_tts(self, message):
+        """
+        If user uses !tts command sends it on stream
+        :param message:
+        :return:
+        """
+        comment = get_comment(message)
+        if comment.startswith('!tts'):
+            cd_type = 'tts_user'
+            current_time = time.time()
+            text = self.fix_tts_text(get_comment(message))
+            length = 0
+            gcd_cooldown_obj = self.get_gcd(message, self.session)
+            cooldown_obj = self.get_cooldown_obj(
+                message=message, cd_type=cd_type, cd_length=length, session=self.session
+            )
+            cooldown = self.cooldowns.cooldown(
+                gcd_cooldown_obj=gcd_cooldown_obj, cooldown_obj=cooldown_obj, message=message,
+                current_time=current_time
+            )
+            if not cooldown:
+                self.sounds.send_tts_text(text)
+                self.update_gcd(current_time, self.session, message)
+                self.update_user_cd(cooldown_obj, current_time, self.session, length=length)
+            else:
+                self.messaging.send_message(cooldown)
+
+    @staticmethod
+    def fix_tts_text(text):
+        char_whitelist = '[^A-Za-z0-9\',.\s\?]+'
+        text = text[4:]
+        text = re.sub('!', '.', text)
+        text = re.sub(char_whitelist, '', text)
+        return text
+
 
 class TwitchBot(MyDatabase):
     def __init__(self, dbtype='sqlite'):
@@ -410,30 +426,32 @@ class TwitchBot(MyDatabase):
         self.sounds = Sounds(base_path)
         self.cooldowns = Cooldown()
         sound_commands = ', '.join(self.sounds)
-        self.comment_keywords = {'!ftp': 'Current FTP is 321 (3.8 wkg)',
-                            '!stats': self.send_stats,
-                            '!zp': 'https://www.zwiftpower.com/profile.php?z=2886856',
-                            '!strava': 'https://www.strava.com/athletes/58350447',
-                            '!swearjar': self.swearjar,
-                            '!time': self.send_time,
-                            '!convert': '!convert <number><lb/kg/f/c/km/mi>',
-                            '!sounds': sound_commands,
-                            '!lurk': self.lurk,
-                            '!chattyboi': self.chatty_boi,
-                            '!trainer': 'My trainer is the Saris H3. I love it',
-                            '!bike': 'I ride the 2020 Trek Emonda 105 groupset with Reynolds Blacklabel 65 wheels'}
+        self.comment_keywords = {
+             '!ftp': 'Current FTP is 321 (3.8 wkg)',
+             '!stats': self.send_stats,
+             '!zp': 'https://www.zwiftpower.com/profile.php?z=2886856',
+             '!strava': 'https://www.strava.com/athletes/58350447',
+             '!swearjar': self.swearjar,
+             '!time': self.send_time,
+             '!convert': '!convert <number><lb/kg/f/c/km/mi>',
+             '!sounds': sound_commands,
+             '!lurk': self.lurk,
+             '!chattyboi': self.chatty_boi,
+             '!trainer': 'My trainer is the Saris H3. I love it',
+             '!bike': 'I ride the 2020 Trek Emonda 105 groupset with Reynolds Blacklabel 65 wheels'
+        }
         self.complements = [
-                        '@{0} are you medusa because you make me rock hard!',
-                        'Hey @{0}, my name’s Microsoft. Can I crash at your place tonight?',
-                        'Hey @{0}, sexy called, they said it was you!',
-                        '@{0}, if you were words on a page, you’d be fine print.',
-                        'Damn @{0} are you a parking ticket? Because you\'ve got fine written all over you',
-                        '@{0} Are you covid? Because you take my breath away!',
-                        '@{0} if you were a flower you’d be a damn-delion.',
-                        '@{0} you\'re like my pinky toe, because I’m gonna '
-                            'bang you on every piece of furniture in the house.',
-                        'I’m not into watching sunsets, but I’d love to see you go down @{0}.'
-                       ]
+            '@{0} are you medusa because you make me rock hard!',
+            'Hey @{0}, my name’s Microsoft. Can I crash at your place tonight?',
+            'Hey @{0}, sexy called, they said it was you!',
+            '@{0}, if you were words on a page, you’d be fine print.',
+            'Damn @{0} are you a parking ticket? Because you\'ve got fine written all over you',
+            '@{0} Are you covid? Because you take my breath away!',
+            '@{0} if you were a flower you’d be a damn-delion.',
+            '@{0} you\'re like my pinky toe, because I’m gonna '
+            'bang you on every piece of furniture in the house.',
+            'I’m not into watching sunsets, but I’d love to see you go down @{0}.'
+        ]
         super().__init__(dbtype=dbtype, dbname=f'{base_path}\\Database\\Chat.db')
         self.comment_keywords['!commands'] = self._define_commands(self.comment_keywords)
         self.messaging = Messaging(
@@ -475,8 +493,8 @@ class TwitchBot(MyDatabase):
         Checks if channel exists in database, if not create entry for it
         :return:
         """
-        channel_obj = self.session.query(Channels)\
-            .where(Channels.channel==config.channel).first()
+        channel_obj = self.session.query(Channels) \
+            .where(Channels.channel == config.channel).first()
         if not channel_obj:
             channel_obj = Channels(channel=config.channel)
             self.session.add(channel_obj)
@@ -489,7 +507,7 @@ class TwitchBot(MyDatabase):
         :param comment_keywords:
         :return:
         """
-        return ', '.join(list(comment_keywords.keys())+['!tts <message>'])
+        return ', '.join(list(comment_keywords.keys()) + ['!tts <message>'])
 
     def read_chat(self):
         """
@@ -497,30 +515,19 @@ class TwitchBot(MyDatabase):
         Entry point for every text based command
         :return:
         """
-        retry_time = 5
         while True:
-            try:
-                resp = self.sock.recv(2048).decode('utf-8')
-                if resp.startswith('PING'):
-                    self.sock.send(resp.replace('PING', 'PONG').encode('utf-8'))
-                elif len(resp) > 0:
-                    message = parse_message(resp)
-                    if is_valid_comment(message):
-                        self.save_chat(message)
-                        if self.my_chat and not self.timeout_spam(message):
-                            self.respond_to_message(message)
-                            self.give_shoutout(message)
-                            self.send_complement(message)
-                            self.check_tts(message)
-                            self.check_sound(message)
-                            self.conversions(message)
-                            self.check_lights(message)
-                    print('='*50)
-            except Exception as e:
-                traceback.print_exc()
-                time.sleep(retry_time)
-                self.messaging.define_sock()
-                self.sock = self.messaging.sock
+            message = self.messaging.read_chat()
+            if message:
+                self.save_chat(message)
+                if self.my_chat and not self.timeout_spam(message):
+                    self.respond_to_message(message)
+                    self.give_shoutout(message)
+                    self.send_complement(message)
+                    self.check_sound(message)
+                    self.conversions(message)
+                    self.check_lights(message)
+                print('=' * 50)
+            print('hi')
 
     def check_lights(self, message):
         """
@@ -573,14 +580,16 @@ class TwitchBot(MyDatabase):
                     'Supports lb/kg/f/c/mi/km'
                 )
 
-    def proper_conversion_comment(self, comment) -> bool:
+    @staticmethod
+    def proper_conversion_comment(comment) -> bool:
         return bool(re.match(
             '!convert\s-?\d+(\.\d+)?\s?(f|c|kg|lb)\Z',
             comment,
             flags=re.IGNORECASE
         ))
 
-    def get_conversion_return_message(self, conversion: Conversions) -> str:
+    @staticmethod
+    def get_conversion_return_message(conversion: Conversions) -> str:
         """
 
         :param conversion:
@@ -635,7 +644,7 @@ class TwitchBot(MyDatabase):
         """
         if random.randint(0, 100) == 1:
             user = get_user(message)
-            complement_index = random.randint(0, len(self.complements)-1)
+            complement_index = random.randint(0, len(self.complements) - 1)
             complement = self.complements[complement_index].format(user)
             self.messaging.send_message(complement)
 
@@ -658,8 +667,10 @@ class TwitchBot(MyDatabase):
         """
         message = args[0]
         user = get_user(message)
-        self.messaging.send_message(f'Thanks for stopping by @{user}! '
-                          f'Remember, my followers are objectively better than other people.')
+        self.messaging.send_message(
+            f'Thanks for stopping by @{user}! '
+            f'Remember, my followers are objectively better than other people.'
+        )
 
     # def rewards(self, *args):
     #     # self.messaging.send_message('!tts <message> - 10 SpoonBucks')
@@ -681,7 +692,7 @@ class TwitchBot(MyDatabase):
                 self.messaging.send_message(self.comment_keywords[comment])
             else:
                 self.comment_keywords[comment](message)
-        elif re.search('sprint', comment, flags=re.IGNORECASE) and random.randint(0,100) < 20:
+        elif re.search('sprint', comment, flags=re.IGNORECASE) and random.randint(0, 100) < 20:
             self.messaging.send_message(f'@{user} shutup nerd')
             self.sounds.send_sound('shutup.mp3')
 
@@ -699,7 +710,7 @@ class TwitchBot(MyDatabase):
             response = f'@{user} ' + streamer.message + f' {self.check_out}{user}.'
             if streamer.sound:
                 self.sounds.send_sound(streamer.sound)
-        elif user.lower() in chat_shoutouts and chat_shoutouts[user.lower()].seen_today==0:
+        elif user.lower() in chat_shoutouts and chat_shoutouts[user.lower()].seen_today == 0:
             chatter = chat_shoutouts[user]
             chatter.seen_today = 1
             response = chatter.message.format(user)
@@ -721,41 +732,6 @@ class TwitchBot(MyDatabase):
             print(f'sound filename: {sound_filename}')
             self.sounds.send_sound(sound_filename)
 
-    def check_tts(self, message):
-        """
-        If user uses !tts command sends it on stream
-        :param message:
-        :return:
-        """
-        comment = get_comment(message)
-        if comment.startswith('!tts'):
-            cd_type = 'tts_user'
-            current_time = time.time()
-            text = self.fix_tts_text(get_comment(message))
-            length = 60
-            gcd_cooldown_obj = self.get_gcd(message, self.session)
-            cooldown_obj = self.get_cooldown_obj(
-                message=message, cd_type=cd_type, cd_length=length, session=self.session
-            )
-            cooldown = self.cooldowns.cooldown(
-                gcd_cooldown_obj=gcd_cooldown_obj, cooldown_obj=cooldown_obj, message=message,
-                current_time=current_time
-            )
-            if not cooldown:
-                self.sounds.send_tts_text(text)
-                self.update_gcd(current_time, self.session, message)
-                self.update_user_cd(cooldown_obj, current_time, self.session, length=length)
-            else:
-                self.messaging.send_message(cooldown)
-
-    @staticmethod
-    def fix_tts_text(text):
-        char_whitelist = '[^A-Za-z0-9\',.\s\?]+'
-        text = text[4:]
-        text = re.sub('!', '.', text)
-        text = re.sub(char_whitelist, '', text)
-        return text
-
     def send_stats(self, message):
         stats = self.get_channel_stats_obj(message, session=self.session)
         if stats != '0':
@@ -772,11 +748,11 @@ class TwitchBot(MyDatabase):
         channel = config.channel
         comment_list = self.get_users_comments(user=user, channel=channel, session=self.session)
         times_sworn = count_words(comment_list, swear_words)
-        swear_ratio = str(times_sworn/len(comment_list))
+        swear_ratio = str(times_sworn / len(comment_list))
         if len(swear_ratio) >= 4:
             swear_ratio = swear_ratio[:4]
         self.messaging.send_message(f'You have sworn {times_sworn} times.'
-                          f' Your ratio of swear words to total comments is {swear_ratio}')
+                                    f' Your ratio of swear words to total comments is {swear_ratio}')
 
     def chatty_boi(self, message: str):
         """
@@ -790,8 +766,8 @@ class TwitchBot(MyDatabase):
         number2 = top_commenters[1]
         number3 = top_commenters[2]
         self.messaging.send_message(f'@{number1.user} is the chattiest boi, having sent {number1[1]} messages.'
-                          f' #2: @{number2.user} with {number2[1]}.'
-                          f' #3: @{number3.user} with {number3[1]}')
+                                    f' #2: @{number2.user} with {number2[1]}.'
+                                    f' #3: @{number3.user} with {number3[1]}')
 
     def save_chat(self, message: str):
         """
@@ -815,10 +791,11 @@ class TwitchBot(MyDatabase):
             return True
         return False
 
+
 class ActiveUserProcess(MyDatabase):
 
     def __init__(self, token, server,
-                       port, nick, channel, base_path, dbtype='sqlite'
+                 port, nick, channel, base_path, dbtype='sqlite'
                  ):
         """
         :param token:
@@ -855,7 +832,7 @@ class ActiveUserProcess(MyDatabase):
             self._give_chatpoints(session=self.session, channel=self.channel)
             self._update_active_users(session=self.session, channel=self.channel)
             time.sleep(update_interval)
-            if time_streamed%(intervals_for_ad*update_interval) == 0:
+            if time_streamed % (intervals_for_ad * update_interval) == 0:
                 self.send_info()
             time_streamed += update_interval
 
@@ -870,9 +847,9 @@ class ActiveUserProcess(MyDatabase):
                 time.sleep(.1)
                 self.sounds.send_sound('follow.mp3')
                 self.messaging.send_message(message)
-                print('Sent ad')
         except:
             traceback.print_exc()
+
 
 if __name__ == '__main__':
     pass
@@ -881,7 +858,11 @@ if __name__ == '__main__':
     tb = TwitchBot(
         dbtype=config.dbtype
     )
-    p = Process(target=ActiveUserProcess, kwargs={"token":config.token, "server":config.server,
-        "port":config.port, "nick":config.nick, "channel":config.channel, "base_path":config.base_path})
+    tts = TTSProcess()
+    p = Process(target=ActiveUserProcess, kwargs={
+        "token": config.token, "server": config.server,
+        "port": config.port, "nick": config.nick, "channel": config.channel,
+        "base_path": config.base_path}
+                )
     p.start()
     tb.main()

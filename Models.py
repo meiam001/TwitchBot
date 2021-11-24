@@ -185,8 +185,7 @@ class MyDatabase:
         if folder_name not in os.listdir(path):
             os.mkdir(f'{path}\\{folder_name}')
 
-
-    def get_gcd(self, message, session, gcd=10) -> Cooldowns:
+    def get_gcd(self, message, session, gcd=0) -> Cooldowns:
         channel = get_channel(message)
         cooldown_object = session.query(Cooldowns)\
             .join(Channels, Channels.channel_id == Cooldowns.channel_id) \
