@@ -9,6 +9,9 @@ class ShoutOuts:
 
 
 streamer_shoutouts = {
+    'DaveGarge'.lower():
+        ShoutOuts('Cyclist with a cause, helping underserved communities get on the saddle!',
+                  sound='trousers.mp3'),
     'PiMPleff'.lower():
         ShoutOuts('The speed skating cyclist musician y\'all already know who it is.',
                   sound='pimp.mp3'),

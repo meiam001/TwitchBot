@@ -6,6 +6,7 @@ from sqlalchemy.sql import func, desc
 from Parsers import get_channel, get_user, get_comment
 import os
 import requests
+from contextlib import contextmanager
 import time
 Base = declarative_base()
 
@@ -130,6 +131,19 @@ class MyDatabase:
         except Exception as e:
             print("Error occurred during Table creation!")
             print(e)
+
+    @contextmanager
+    def session_scope(self, engine):
+        """Provide a transactional scope around a series of operations."""
+        session = Session(engine)
+        try:
+            yield session
+            session.commit()
+        except:
+            session.rollback()
+            raise
+        finally:
+            session.close()
 
     def write_message(self, message: str, session)->str:
         """
@@ -381,7 +395,9 @@ class MyDatabase:
         :return:
         """
         viewers = self._get_current_viewers(channel)
+        print('='*50)
         print('Viewers: ' + str(viewers))
+        print(f'Number Viewers: {len(viewers)}')
         active_database = session.query(ActiveUsers).all()
         for user in viewers:
             active_obj = session.query(ActiveUsers)\

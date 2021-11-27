@@ -61,7 +61,6 @@ class Conversions:
     @staticmethod
     def mi_to_km(mi: float) -> float:
         """
-
         :param mi:
         :return:
         """
@@ -77,7 +76,6 @@ class Conversions:
     @staticmethod
     def kg_to_pounds(kg: float) -> float:
         """
-
         :param kg:
         :return:
         """
@@ -86,7 +84,6 @@ class Conversions:
     @staticmethod
     def pounds_to_kg(pounds: float) -> float:
         """
-
         :param pounds:
         :return:
         """
@@ -104,13 +101,11 @@ class Cooldown:
 
     def __init__(self):
         """
-
         """
 
     @staticmethod
     def cooldown(gcd_cooldown_obj, cooldown_obj, message, current_time) -> str:
         """
-
         :param gcd_cooldown_obj:
         :param cooldown_obj:
         :param message:
@@ -188,7 +183,6 @@ class Sounds:
 
     def send_sound(self, sound_filename, new_process=True, *flags):
         """
-
         :param sound_filename: sound filename
         :param new_process: determines if a new process is started or if current process
             waits for sound to complete
@@ -330,7 +324,7 @@ class TTSProcess(MyDatabase):
         self.engine = pyttsx3.init()
         self.engine.setProperty('rate', 150)
         self.base_path = base_path
-        self.session = self.get_session(self.db_engine)
+        self.session = None
         self.sounds = Sounds(base_path)
         self.messaging = Messaging(
             channel=config.channel, server=config.server, nick=config.nick,
@@ -355,30 +349,39 @@ class TTSProcess(MyDatabase):
         """
         comment = get_comment(message)
         if comment.startswith('!tts'):
+            session = self.get_session(self.db_engine)
+            # with self.session_scope(self.engine) as session:
             cd_type = 'tts_user'
             current_time = time.time()
             text = self.fix_tts_text(get_comment(message))
-            length = 0
-            gcd_cooldown_obj = self.get_gcd(message, self.session)
+            user_cd = 60
+            global_cd = 0
+            gcd_obj = self.get_gcd(message, session)
+            gcd_obj.length = global_cd
             cooldown_obj = self.get_cooldown_obj(
-                message=message, cd_type=cd_type, cd_length=length, session=self.session
+                message=message, cd_type=cd_type, cd_length=user_cd, session=session
             )
             cooldown = self.cooldowns.cooldown(
-                gcd_cooldown_obj=gcd_cooldown_obj, cooldown_obj=cooldown_obj, message=message,
+                gcd_cooldown_obj=gcd_obj, cooldown_obj=cooldown_obj, message=message,
                 current_time=current_time
             )
             if not cooldown:
                 self.send_tts_text(text)
-                self.update_gcd(current_time, self.session, message)
-                self.update_user_cd(cooldown_obj, current_time, self.session, length=length)
+                self.update_gcd(current_time, session, message)
+                self.update_user_cd(cooldown_obj, current_time, session, length=user_cd)
             else:
                 self.messaging.send_message(cooldown)
+            session.close()
 
     @staticmethod
-    def fix_tts_text(text):
-        char_whitelist = '[^A-Za-z0-9\',.\s\?]+'
+    def fix_tts_text(text: str) -> str:
+        """
+        People spam dumb annoying shit so, whitelist alphanumeric, ignore rest
+        :param text: !tts <message>
+        :return:
+        """
+        char_whitelist = '[^A-Za-z0-9\',.\s\?!]+'
         text = text[4:]
-        text = re.sub('!', '.', text)
         text = re.sub(char_whitelist, '', text)
         return text
 
@@ -410,11 +413,9 @@ class TTSProcess(MyDatabase):
         :return: str: file path to tts file
         """
         file_name = self.generate_tts_filename()
-        # tts = gTTS(text=text, lang='en')
         file_path = os.path.join(self.base_path, 'Sounds', file_name)
         self.engine.save_to_file(text, file_path)
         self.engine.runAndWait()
-        # tts.save(file_path)
         return file_name
 
     def send_tts_text(self, text):
@@ -497,7 +498,6 @@ class TwitchBot(MyDatabase):
 
     def main(self):
         """
-
         :return:
         """
         self.read_chat()
@@ -533,7 +533,7 @@ class TwitchBot(MyDatabase):
             message = self.messaging.read_chat()
             if message:
                 self.save_chat(message)
-                if self.my_chat and not self.timeout_spam(message):
+                if self.my_chat and not self.timeout_spam(message) and not re.match('!tts', message, flags=re.IGNORECASE):
                     self.respond_to_message(message)
                     self.give_shoutout(message)
                     self.send_complement(message)
@@ -543,7 +543,6 @@ class TwitchBot(MyDatabase):
 
     def check_lights(self, message):
         """
-
         :param message:
         :return:
         """
@@ -603,7 +602,6 @@ class TwitchBot(MyDatabase):
     @staticmethod
     def get_conversion_return_message(conversion: Conversions) -> str:
         """
-
         :param conversion:
         :return:
         """
@@ -768,7 +766,6 @@ class TwitchBot(MyDatabase):
 
     def chatty_boi(self, message: str):
         """
-
         :param message:
         :return:
         """
@@ -783,7 +780,6 @@ class TwitchBot(MyDatabase):
 
     def save_chat(self, message: str):
         """
-
         :param message:
         :return:
         """
@@ -794,7 +790,6 @@ class TwitchBot(MyDatabase):
 
     def is_not_keyword(self, message: str) -> bool:
         """
-
         :param message:
         :return:
         """
