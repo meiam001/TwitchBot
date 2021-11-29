@@ -2,6 +2,7 @@ import socket
 import re
 from Models import Channels, MyDatabase, ActiveUsers
 import subprocess
+import requests
 from setup import Config
 import traceback
 import threading
@@ -13,15 +14,16 @@ import random
 import os
 from Parsers import get_channel, get_comment, get_user, parse_message, count_words, is_valid_comment
 from datetime import datetime
-from blinkytape import BlinkyTape, serial
+from blinkyboi import BlinkyBoi, serial
 from ShoutOuts import streamer_shoutouts, chat_shoutouts
+import logging
 
 
 timestamp_regex = '\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{6}'
 path_to_vlc = r'C:\Program Files\VideoLAN\VLC\vlc.exe'
 
 swear_words_regex = '|'.join(swear_words)
-
+logger = logging.getLogger(__name__)
 
 class Conversions:
     def __init__(self, comment: str):
@@ -236,6 +238,7 @@ class Messaging:
                 if is_valid_comment(message):
                     return message
         except:
+            logging.error('')
             traceback.print_exc()
             time.sleep(retry_time)
             self.define_sock()
@@ -261,10 +264,8 @@ class Messaging:
         """
         try:
             self.sock.send(f'PRIVMSG #{self.channel} :{comment}\n'.encode('utf-8'))
-        except ConnectionAbortedError:
-            self.define_sock()
-            self.sock.send(f'PRIVMSG #{self.channel} :{comment}\n'.encode('utf-8'))
-        except ConnectionResetError:
+        except ConnectionAbortedError or ConnectionResetError as e:
+            logging.error(f'{e}')
             self.define_sock()
             self.sock.send(f'PRIVMSG #{self.channel} :{comment}\n'.encode('utf-8'))
 
@@ -277,45 +278,6 @@ class Messaging:
             if resp.startswith('PING'):
                 print('\n\n\n\nPONG SENT FROM MESSAGING\n\n\n\n')
                 self.sock.send(resp.replace('PING', 'PONG').encode('utf-8'))
-
-
-class BlinkyBoi:
-    def __init__(self, port):
-        self.bt = BlinkyTape(port)
-        self.commands = {'!police': self.police,
-                         '!blue': self.blue,
-                         '!red': self.red,
-                         '!purple': self.purple,
-                         '!green': self.green}
-
-    def police(self):
-        """
-        flash blue and red for a few seconds
-        :return:
-        """
-        time_on = 10
-        interval = .4
-        for i in range(int(time_on / interval / 2)):
-            self.bt.alternate_colors((255, 0, 0), (0, 0, 255))
-            time.sleep(interval)
-            self.bt.alternate_colors((0, 0, 255), (255, 0, 0))
-            time.sleep(interval)
-        self.default()
-
-    def blue(self):
-        self.default()
-
-    def red(self):
-        self.bt.displayColor(255, 0, 0)
-
-    def purple(self):
-        self.bt.displayColor(255, 0, 255)
-
-    def green(self):
-        self.bt.displayColor(0, 255, 0)
-
-    def default(self):
-        self.bt.displayColor(0, 0, 255)
 
 
 class TTSProcess(MyDatabase):
@@ -350,7 +312,6 @@ class TTSProcess(MyDatabase):
         comment = get_comment(message)
         if comment.startswith('!tts'):
             session = self.get_session(self.db_engine)
-            # with self.session_scope(self.engine) as session:
             cd_type = 'tts_user'
             current_time = time.time()
             text = self.fix_tts_text(get_comment(message))
@@ -400,6 +361,7 @@ class TTSProcess(MyDatabase):
             try:
                 os.remove(file_path)
             except PermissionError:
+
                 file_number = re.search('\d+', file_name)
                 file_number = (int(file_number.group(0)) + 1)
                 file_name = re.sub('\d+', str(file_number), file_name, count=1)
@@ -837,11 +799,29 @@ class ActiveUserProcess(MyDatabase):
         intervals_for_ad = 15
         while True:
             self._give_chatpoints(session=self.session, channel=self.channel)
-            self._update_active_users(session=self.session, channel=self.channel)
+            viewers = self._get_current_viewers(self.channel)
+            self._update_active_users(session=self.session, channel=self.channel, viewers=viewers)
             time.sleep(update_interval)
             if time_streamed % (intervals_for_ad * update_interval) == 0:
                 self.send_info()
             time_streamed += update_interval
+
+    @staticmethod
+    def _get_current_viewers(channel) -> [str]:
+        """
+
+        :return:
+        """
+        channel_viewers = f'https://tmi.twitch.tv/group/user/{channel}/chatters'
+        r = requests.get(channel_viewers)
+        if r.status_code == 200:
+            viewer_json = r.json()
+            vips = viewer_json['chatters']['vips']
+            mods = viewer_json['chatters']['moderators']
+            viewers = viewer_json['chatters']['viewers']
+            all_viewers = vips+mods+viewers
+            return all_viewers
+        return []
 
     def send_info(self):
         """
@@ -854,7 +834,8 @@ class ActiveUserProcess(MyDatabase):
                 time.sleep(.1)
                 self.sounds.send_sound('follow.mp3')
                 self.messaging.send_message(message)
-        except:
+        except Exception as e:
+            logging.error(f'{e}')
             traceback.print_exc()
 
 

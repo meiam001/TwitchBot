@@ -5,8 +5,6 @@ import datetime
 from sqlalchemy.sql import func, desc
 from Parsers import get_channel, get_user, get_comment
 import os
-import requests
-from contextlib import contextmanager
 import time
 Base = declarative_base()
 
@@ -132,18 +130,6 @@ class MyDatabase:
             print("Error occurred during Table creation!")
             print(e)
 
-    @contextmanager
-    def session_scope(self, engine):
-        """Provide a transactional scope around a series of operations."""
-        session = Session(engine)
-        try:
-            yield session
-            session.commit()
-        except:
-            session.rollback()
-            raise
-        finally:
-            session.close()
 
     def write_message(self, message: str, session)->str:
         """
@@ -361,22 +347,6 @@ class MyDatabase:
                 session.add(stats_obj)
         session.commit()
 
-    @staticmethod
-    def _get_current_viewers(channel) -> [str]:
-        """
-
-        :return:
-        """
-        channel_viewers = f'https://tmi.twitch.tv/group/user/{channel}/chatters'
-        r = requests.get(channel_viewers)
-        if r.status_code == 200:
-            viewer_json = r.json()
-            vips = viewer_json['chatters']['vips']
-            mods = viewer_json['chatters']['moderators']
-            viewers = viewer_json['chatters']['viewers']
-            all_viewers = vips+mods+viewers
-            return all_viewers
-        return []
 
     @staticmethod
     def get_top_commenters(channel, limit, session):
@@ -389,12 +359,11 @@ class MyDatabase:
             .order_by(desc(func.count(Comments.user_id))) \
             .limit(limit).all()
 
-    def _update_active_users(self, channel, session):
+    def _update_active_users(self, channel, session, viewers):
         """
         Checks twitch API to see who's in chat and updates active users database accordingly
         :return:
         """
-        viewers = self._get_current_viewers(channel)
         print('='*50)
         print('Viewers: ' + str(viewers))
         print(f'Number Viewers: {len(viewers)}')
