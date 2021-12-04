@@ -1,0 +1,3 @@
+2021-12-04 06:44:21,676 - main.py - send_info - root - ERROR - name 'xxx' is not defined
+2021-12-04 06:48:09,930 - main.py - send_info - __mp_main__ - ERROR - name 'xxx' is not defined
+2021-12-04 06:50:35,547 - main.py - send_info - __mp_main__ - ERROR - name 'xxx' is not defined

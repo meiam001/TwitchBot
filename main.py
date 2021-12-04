@@ -1,6 +1,7 @@
 import socket
+import log
 import re
-from Models import Channels, MyDatabase, ActiveUsers
+from Models import Channels, MyDatabase, ActiveUsers, Cooldowns
 import subprocess
 import requests
 from setup import Config
@@ -12,101 +13,24 @@ from multiprocessing import Process
 from swearwords import swear_words
 import random
 import os
-from Parsers import get_channel, get_comment, get_user, parse_message, count_words, is_valid_comment
+from Parsers import get_channel, get_comment, get_user, parse_message, count_words, is_valid_comment, Conversions
 from datetime import datetime
 from blinkyboi import BlinkyBoi, serial
 from ShoutOuts import streamer_shoutouts, chat_shoutouts
-import logging
+
 
 
 timestamp_regex = '\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{6}'
 path_to_vlc = r'C:\Program Files\VideoLAN\VLC\vlc.exe'
 
 swear_words_regex = '|'.join(swear_words)
-logger = logging.getLogger(__name__)
-
-class Conversions:
-    def __init__(self, comment: str):
-        """
-        container class for weight and temp conversions
-        :param comment:
-        """
-        self.comment: str = comment
-        self.to_convert: float = self.get_to_convert(comment)
-
-    def __bool__(self):
-        if isinstance(self.to_convert, float):
-            return True
-        return False
-
-    def __repr__(self):
-        return f'to_convert: {self.to_convert}'
-
-    @staticmethod
-    def f_to_c(f: float) -> float:
-        """
-        converts Fahrenheit to Celsius
-        :param f: Fahrenheit
-        :return: Celsius
-        """
-        return round((f - 32) * (5 / 9), 1)
-
-    @staticmethod
-    def c_to_f(c: float) -> float:
-        """
-        converts celsius to fahrenheit
-        :param c: Celsius
-        :return: Fahrenheit
-        """
-        return round((c * 1.8) + 32, 1)
-
-    @staticmethod
-    def mi_to_km(mi: float) -> float:
-        """
-        :param mi:
-        :return:
-        """
-        return round(mi * 1.60934, 1)
-
-    @staticmethod
-    def km_to_mi(km: float) -> float:
-        """
-        :return:
-        """
-        return round(1.60934 / km, 1)
-
-    @staticmethod
-    def kg_to_pounds(kg: float) -> float:
-        """
-        :param kg:
-        :return:
-        """
-        return round(2.20462262185 * kg, 1)
-
-    @staticmethod
-    def pounds_to_kg(pounds: float) -> float:
-        """
-        :param pounds:
-        :return:
-        """
-        return round(pounds / 2.20462262185, 1)
-
-    @staticmethod
-    def get_to_convert(comment: str) -> float:
-        to_convert = comment[len('!convert'):].strip().lower()
-        to_convert = re.match('-?\d+(\.\d+)?', to_convert)
-        if to_convert:
-            return float(to_convert[0])
+logger = log.logging.getLogger(__name__)
 
 
 class Cooldown:
 
-    def __init__(self):
-        """
-        """
-
     @staticmethod
-    def cooldown(gcd_cooldown_obj, cooldown_obj, message, current_time) -> str:
+    def cooldown(gcd_cooldown_obj: Cooldowns, cooldown_obj: Cooldowns, message:str, current_time) -> str:
         """
         :param gcd_cooldown_obj:
         :param cooldown_obj:
@@ -128,7 +52,7 @@ class Cooldown:
 
 class Sounds:
 
-    def __init__(self, base_path):
+    def __init__(self, base_path: str):
         """
         Add the file name from the Sounds folder along with desired command here for more sounds
         """
@@ -183,7 +107,7 @@ class Sounds:
             case _:
                 return 2.5
 
-    def send_sound(self, sound_filename, new_process=True, *flags):
+    def send_sound(self, sound_filename: str, new_process=True, *flags):
         """
         :param sound_filename: sound filename
         :param new_process: determines if a new process is started or if current process
@@ -216,7 +140,7 @@ class Messaging:
         # self.define_sock()
 
     @staticmethod
-    def _connect(server, token, nick, channel, port) -> socket.socket:
+    def _connect(server: str, token: str, nick: str, channel: str, port: str) -> socket.socket:
         """
         :return:
         """
@@ -237,8 +161,8 @@ class Messaging:
                 message = parse_message(resp)
                 if is_valid_comment(message):
                     return message
-        except:
-            logging.error('')
+        except Exception as e:
+            logger.error(f'{e}')
             traceback.print_exc()
             time.sleep(retry_time)
             self.define_sock()
@@ -265,7 +189,7 @@ class Messaging:
         try:
             self.sock.send(f'PRIVMSG #{self.channel} :{comment}\n'.encode('utf-8'))
         except ConnectionAbortedError or ConnectionResetError as e:
-            logging.error(f'{e}')
+            logger.error(f'{e}')
             self.define_sock()
             self.sock.send(f'PRIVMSG #{self.channel} :{comment}\n'.encode('utf-8'))
 
@@ -303,7 +227,7 @@ class TTSProcess(MyDatabase):
             if message:
                 self.check_tts(message)
 
-    def check_tts(self, message):
+    def check_tts(self, message: str):
         """
         If user uses !tts command sends it on stream
         :param message:
@@ -361,7 +285,6 @@ class TTSProcess(MyDatabase):
             try:
                 os.remove(file_path)
             except PermissionError:
-
                 file_number = re.search('\d+', file_name)
                 file_number = (int(file_number.group(0)) + 1)
                 file_name = re.sub('\d+', str(file_number), file_name, count=1)
@@ -380,7 +303,7 @@ class TTSProcess(MyDatabase):
         self.engine.runAndWait()
         return file_name
 
-    def send_tts_text(self, text):
+    def send_tts_text(self, text: str):
         """
         save TTS and play it
         :param text:
@@ -390,7 +313,6 @@ class TTSProcess(MyDatabase):
         speed_multiplier = self.sounds.get_speed_multiplier(text)
         tts_file_path = self.save_tts(text)
         self.sounds.send_sound(tts_file_path, new_process, f'--rate={speed_multiplier}')
-
 
 
 class TwitchBot(MyDatabase):
@@ -503,7 +425,7 @@ class TwitchBot(MyDatabase):
                     self.conversions(message)
                     self.check_lights(message)
 
-    def check_lights(self, message):
+    def check_lights(self, message: str):
         """
         :param message:
         :return:
@@ -525,7 +447,9 @@ class TwitchBot(MyDatabase):
         :return:
         """
         comment = get_comment(message)
-        if re.search('bigfollow', comment, flags=re.IGNORECASE):
+        if re.search('bigfollow', comment, flags=re.IGNORECASE) or (
+                re.search('buy', comment, flags=re.IGNORECASE) and re.search('follower', comment, flags=re.IGNORECASE)
+        ):
             user = get_user(message)
             print('bigfollow thingy')
             self.messaging.send_message(f'/timeout {user} 60')
@@ -554,7 +478,7 @@ class TwitchBot(MyDatabase):
                 )
 
     @staticmethod
-    def proper_conversion_comment(comment) -> bool:
+    def proper_conversion_comment(comment: str) -> bool:
         return bool(re.match(
             '!convert\s-?\d+(\.\d+)?\s?(f|c|kg|lb)\Z',
             comment,
@@ -691,7 +615,7 @@ class TwitchBot(MyDatabase):
         if response:
             self.messaging.send_message(response)
 
-    def check_sound(self, message):
+    def check_sound(self, message: str):
         """
         Checks chat to see if sound command was sent
         Sends it if so
@@ -704,7 +628,7 @@ class TwitchBot(MyDatabase):
             print(f'sound filename: {sound_filename}')
             self.sounds.send_sound(sound_filename)
 
-    def send_stats(self, message):
+    def send_stats(self, message: str):
         stats = self.get_channel_stats_obj(message, session=self.session)
         if stats != '0':
             points = stats.stat_value
@@ -807,7 +731,7 @@ class ActiveUserProcess(MyDatabase):
             time_streamed += update_interval
 
     @staticmethod
-    def _get_current_viewers(channel) -> [str]:
+    def _get_current_viewers(channel: str) -> [str]:
         """
 
         :return:
@@ -835,7 +759,7 @@ class ActiveUserProcess(MyDatabase):
                 self.sounds.send_sound('follow.mp3')
                 self.messaging.send_message(message)
         except Exception as e:
-            logging.error(f'{e}')
+            logger.error(f'{e}')
             traceback.print_exc()
 
 
@@ -854,3 +778,4 @@ if __name__ == '__main__':
                 )
     p.start()
     tb.main()
+

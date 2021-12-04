@@ -56,12 +56,14 @@ class Cooldowns(Base):
     created = Column(DATETIME, default=func.now())
     last_updated = Column(DateTime, onupdate=datetime.datetime.now)
 
-class MyDatabase:
+
+class ConnectDB:
     DB_ENGINE = {
         'sqlite': 'sqlite:///{DB}'
     }
     db_engine = None
     database_folder = 'Database'
+
     def __init__(self, dbtype='sqlite', dbname='Chat.db', username='', password=''):
         dbtype = dbtype.lower()
         if dbtype in self.DB_ENGINE.keys():
@@ -74,6 +76,11 @@ class MyDatabase:
     @staticmethod
     def get_session(engine):
         return Session(engine)
+
+
+class MyDatabase(ConnectDB):
+    def __init__(self, dbtype='sqlite', dbname='Chat.db', username='', password=''):
+        super().__init__(dbtype, dbname, username, password)
 
     def create_db_tables(self):
         self.create_folder('.', 'Database')
@@ -129,7 +136,6 @@ class MyDatabase:
         except Exception as e:
             print("Error occurred during Table creation!")
             print(e)
-
 
     def write_message(self, message: str, session)->str:
         """
@@ -195,7 +201,6 @@ class MyDatabase:
         if not cooldown_object:
             cooldown_object = self.insert_cooldown(message, session, gcd, 'Global')
         return cooldown_object
-
 
     def get_channel_stats_obj(self, message, session, stat='channel_points'):
         channel=get_channel(message)
@@ -346,7 +351,6 @@ class MyDatabase:
                     stats_obj.stat_value = str(new_point)
                 session.add(stats_obj)
         session.commit()
-
 
     @staticmethod
     def get_top_commenters(channel, limit, session):
