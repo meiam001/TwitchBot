@@ -5,8 +5,11 @@ import datetime
 from sqlalchemy.sql import func, desc
 from Parsers import get_channel, get_user, get_comment
 import os
+import log
 import time
 Base = declarative_base()
+
+logger = log.logging.getLogger(__name__)
 
 class UserStats(Base):
     __tablename__ = 'userStats'
@@ -79,6 +82,7 @@ class ConnectDB:
 
 
 class MyDatabase(ConnectDB):
+
     def __init__(self, dbtype='sqlite', dbname='Chat.db', username='', password=''):
         super().__init__(dbtype, dbname, username, password)
 
@@ -164,7 +168,7 @@ class MyDatabase(ConnectDB):
         """
         comment_obj = Comments(comment=comment, user_id=user_obj.user_id, channel_id=channel_obj.channel_id)
         session.add(comment_obj)
-        session.commit()
+        self.commit(session)
 
     def commit_comment_dne(self, comment: str, user: str, channel_obj: Channels, session, channel):
         """
@@ -176,7 +180,7 @@ class MyDatabase(ConnectDB):
         """
         user_obj = Users(user=user)
         session.add(user_obj)
-        session.commit()
+        self.commit(session)
         comment_obj = Comments(
             comment=comment, user_id=user_obj.user_id, channel_id=channel_obj.channel_id
         )
@@ -184,7 +188,7 @@ class MyDatabase(ConnectDB):
         stats_obj.stat_value = '0'
         session.add(stats_obj)
         session.add(comment_obj)
-        session.commit()
+        self.commit(session)
         return f'It\'s @{user}\'s first time in chat! Say hi! (And don\'t forget to follow :D)'
 
     def create_folder(self, path: str, folder_name: str):
@@ -219,7 +223,7 @@ class MyDatabase(ConnectDB):
         else:
             stats = UserStats(user_id=user_id, channel_id=channel_id, stat='channel_points', stat_value='0')
             session.add(stats)
-            session.commit()
+            self.commit(session)
         return session.query(UserStats)\
             .where(UserStats.user_id==user_id)\
             .where(UserStats.stat==stat)\
@@ -244,19 +248,19 @@ class MyDatabase(ConnectDB):
                                     last_used=0,
                                     length=cd_length)
         session.add(cooldown_object)
-        session.commit()
+        self.commit(session)
         return cooldown_object
 
     def update_gcd(self, current_time, session, message, length=10):
         gcd_obj = self.get_gcd(message, session)
         gcd_obj.last_used = current_time
         gcd_obj.length = length
-        session.commit()
+        self.commit(session)
 
     def update_user_cd(self, cooldown_obj, current_time, session, length=180):
         cooldown_obj.last_used = current_time
         cooldown_obj.length = length
-        session.commit()
+        self.commit(session)
 
     def get_channel_obj(self, message, session) -> Channels:
         channel_name = get_channel(message)
@@ -288,7 +292,7 @@ class MyDatabase(ConnectDB):
         if not user:
             user = Users(user)
             session.add(user)
-            session.commit()
+            self.commit(session)
         return user
 
     def subtract_points(self, user, channel, points_to_subtract: int, session):
@@ -298,7 +302,7 @@ class MyDatabase(ConnectDB):
         )
         new_point_value = int(stats_obj.stat_value)-points_to_subtract
         stats_obj.stat_value = str(new_point_value)
-        session.commit()
+        self.commit(session)
         return stats_obj.stat_value
 
     def get_users_comments(self, user, channel, session) -> [Comments]:
@@ -350,7 +354,7 @@ class MyDatabase(ConnectDB):
                     new_point = int(stats_obj.stat_value) + 1
                     stats_obj.stat_value = str(new_point)
                 session.add(stats_obj)
-        session.commit()
+        self.commit(session)
 
     @staticmethod
     def get_top_commenters(channel, limit, session):
@@ -384,7 +388,21 @@ class MyDatabase(ConnectDB):
         for user in active_database:
             if user.user not in viewers:
                 session.delete(user)
-        session.commit()
+        self.commit(session)
+
+    def commit(self, session):
+        """
+        Commits the session with some error handling
+        :param session:
+        :return:
+        """
+        try:
+            session.commit()
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            logger.error(f'{e}')
+            session.rollback()
 
 if __name__ == '__main__':
     pass

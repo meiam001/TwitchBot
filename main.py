@@ -57,8 +57,10 @@ class Sounds:
         Add the file name from the Sounds folder along with desired command here for more sounds
         """
         self.base_path = base_path
-        self.sounds = {'!vomit': 'vomit.mp3',
-                       '!doicare': 'doicare.mp3',
+        self.sounds = {'!ty': 'ty.mp3',
+                       '!9001': '9001.mp3',
+                       '!vomit': 'vomit.mp3',
+                       '!shutup': 'shutup2.mp3',
                        '!shotsfired': 'shots.mp3',
                        '!stopwhining': 'stop_whining.mp3',
                        '!kamehameha': 'kamehameha.mp3',
@@ -67,10 +69,10 @@ class Sounds:
                        '!baka': 'baka.mp3',
                        '!nani?!': 'nani.mp3',
                        '!haha': 'haha.mp3',
-                       '!heyboys': 'heyboys.mp3',
                        '!discipline': 'discipline.mp3',
                        '!egirl': 'egirl.mp3',
-                       '!aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.mp3'}
+                       '!aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.mp3'
+                       }
 
     def __iter__(self):
         return iter(self.sounds.keys())
@@ -120,8 +122,8 @@ class Sounds:
         if new_process:
             sp = Process(target=subprocess.run, args=(
                 [path_to_vlc, file_path, '--play-and-exit', '--qt-start-minimized'] + flags,
+                )
             )
-                        )
             sp.start()
             return sp
         subprocess.run([path_to_vlc, file_path, '--play-and-exit', '--qt-start-minimized'] + flags)
@@ -251,12 +253,13 @@ class TTSProcess(MyDatabase):
                 current_time=current_time
             )
             if not cooldown:
-                self.send_tts_text(text)
                 self.update_gcd(current_time, session, message)
                 self.update_user_cd(cooldown_obj, current_time, session, length=user_cd)
+                session.close()
+                self.send_tts_text(text)
             else:
                 self.messaging.send_message(cooldown)
-            session.close()
+                session.close()
 
     @staticmethod
     def fix_tts_text(text: str) -> str:
@@ -367,7 +370,7 @@ class TwitchBot(MyDatabase):
         self.check_for_channel()
         for user in self.session.query(ActiveUsers):
             self.session.delete(user)
-            self.session.commit()
+            self.commit(self.session)
         try:
             self.bb = BlinkyBoi('COM6')
             self.bb.default()
@@ -396,7 +399,7 @@ class TwitchBot(MyDatabase):
         if not channel_obj:
             channel_obj = Channels(channel=config.channel)
             self.session.add(channel_obj)
-        self.session.commit()
+        self.commit(self.session)
 
     @staticmethod
     def _define_commands(comment_keywords: dict) -> str:
@@ -447,12 +450,26 @@ class TwitchBot(MyDatabase):
         :return:
         """
         comment = get_comment(message)
-        if re.search('bigfollow', comment, flags=re.IGNORECASE) or (
-                re.search('buy', comment, flags=re.IGNORECASE) and re.search('follower', comment, flags=re.IGNORECASE)
-        ):
+        timeout_len = 60
+        if self.check_spam(comment):
             user = get_user(message)
             print('bigfollow thingy')
-            self.messaging.send_message(f'/timeout {user} 60')
+            self.messaging.send_message(f'/timeout {user} {timeout_len}')
+            return True
+        return False
+
+    @staticmethod
+    def check_spam(comment: str)->bool:
+        """
+        Checks for common bot spam comments
+        :param comment: users comment in chat
+        :return: True if spam False otherwise
+        """
+        if re.search('bigfollow|\.ru', comment, flags=re.IGNORECASE):
+            return True
+        if re.search('buy', comment, flags=re.IGNORECASE) and re.search('follower', comment, flags=re.IGNORECASE):
+            return True
+        if re.search('become', comment, flags=re.IGNORECASE) and re.search('famous', comment, flags=re.IGNORECASE):
             return True
         return False
 
@@ -669,7 +686,11 @@ class TwitchBot(MyDatabase):
         :param message:
         :return:
         """
-        return_comment = self.write_message(message, self.session)
+        try:
+            return_comment = self.write_message(message, self.session)
+        except:
+            self.session = self.get_session(self.db_engine)
+            return_comment = ''
         if self.my_chat and return_comment:
             self.messaging.send_message(return_comment)
             self.sounds.send_sound('cheering.mp3')

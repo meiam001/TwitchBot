@@ -1,3 +1,12 @@
 2021-12-04 06:44:21,676 - main.py - send_info - root - ERROR - name 'xxx' is not defined
 2021-12-04 06:48:09,930 - main.py - send_info - __mp_main__ - ERROR - name 'xxx' is not defined
 2021-12-04 06:50:35,547 - main.py - send_info - __mp_main__ - ERROR - name 'xxx' is not defined
+2021-12-04 08:06:36,714 - main.py - read_chat - __main__ - ERROR - [WinError 10053] An established connection was aborted by the software in your host machine
+2021-12-04 15:58:36,050 - main.py - send_message - __mp_main__ - ERROR - [WinError 10053] An established connection was aborted by the software in your host machine
+2021-12-04 16:55:27,326 - main.py - read_chat - __main__ - ERROR - [WinError 10053] An established connection was aborted by the software in your host machine
+2021-12-04 16:55:27,328 - main.py - read_chat - __main__ - ERROR - [WinError 10053] An established connection was aborted by the software in your host machine
+2021-12-04 17:01:22,793 - main.py - read_chat - __main__ - ERROR - [WinError 10053] An established connection was aborted by the software in your host machine
+2021-12-04 17:01:22,793 - main.py - read_chat - __main__ - ERROR - [WinError 10053] An established connection was aborted by the software in your host machine
+2021-12-05 15:48:24,723 - main.py - read_chat - __main__ - ERROR - [WinError 10053] An established connection was aborted by the software in your host machine
+2021-12-07 15:41:24,815 - main.py - read_chat - __main__ - ERROR - [WinError 10054] An existing connection was forcibly closed by the remote host
+2021-12-07 17:21:44,375 - main.py - read_chat - __main__ - ERROR - [WinError 10054] An existing connection was forcibly closed by the remote host
