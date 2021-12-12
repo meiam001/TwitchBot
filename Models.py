@@ -72,7 +72,6 @@ class ConnectDB:
         if dbtype in self.DB_ENGINE.keys():
             engine_url = self.DB_ENGINE[dbtype].format(DB=dbname)
             self.db_engine = create_engine(engine_url, connect_args={'timeout': 20})
-            print(self.db_engine)
         else:
             print("DBType is not found in DB_ENGINE")
 
@@ -298,6 +297,27 @@ class MyDatabase(ConnectDB):
                 stat=stat
             )
         return stats_obj
+
+    def add_channel_owed(self, message: str, stat: str, to_add: int, session, default=1) -> int:
+        """
+        If channel offers rewards to user this adds to_add to it
+        :param message:
+        :param stat:
+        :param to_add:
+        :param default:
+        :return:
+        """
+        stats_obj = self.get_channel_owed(session, message, stat)
+        if not stats_obj.stat_value:
+            channel_owed = default
+            session.add(stats_obj)
+        else:
+            channel_owed = int(stats_obj.stat_value) + to_add
+        if channel_owed < 0:
+            channel_owed = 0
+        stats_obj.stat_value = channel_owed
+        self.commit(session)
+        return channel_owed
 
     def get_user_obj(self, user: str, session) -> Users:
         user = session.query(Users).where(Users.user==user).first()

@@ -1,8 +1,7 @@
-import socket
 import log
 import re
 from Models import Channels, MyDatabase, ActiveUsers, Cooldowns
-import subprocess
+from Sounds import Sounds
 import requests
 from setup import Config
 import traceback
@@ -17,8 +16,8 @@ from Parsers import get_channel, get_comment, get_user, parse_message, count_wor
 from datetime import datetime
 from blinkyboi import BlinkyBoi, serial
 from ShoutOuts import streamer_shoutouts, chat_shoutouts
-
-
+from Messaging import Messaging
+from RollDice import Roll
 
 timestamp_regex = '\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{6}'
 path_to_vlc = r'C:\Program Files\VideoLAN\VLC\vlc.exe'
@@ -48,163 +47,6 @@ class Cooldown:
                        f'{cooldown_obj.length - int(user_diff)} seconds before you can do that'
         else:
             return f'{gcd_cooldown_obj.length - int(global_diff)} seconds remaining before command available'
-
-
-class Sounds:
-
-    def __init__(self, base_path: str):
-        """
-        Add the file name from the Sounds folder along with desired command here for more sounds
-        """
-        self.base_path = base_path
-        self.sounds = {'!ty': 'ty.mp3',
-                       '!9001': '9001.mp3',
-                       '!vomit': 'vomit.mp3',
-                       '!shutup': 'shutup2.mp3',
-                       '!shotsfired': 'shots.mp3',
-                       '!stopwhining': 'stop_whining.mp3',
-                       '!kamehameha': 'kamehameha.mp3',
-                       '!daddy': 'daddy.mp3',
-                       '!nuclear': 'nuclear.mp3',
-                       '!baka': 'baka.mp3',
-                       '!nani?!': 'nani.mp3',
-                       '!haha': 'haha.mp3',
-                       '!discipline': 'discipline.mp3',
-                       '!egirl': 'egirl.mp3',
-                       '!aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.mp3'
-                       }
-
-    def __iter__(self):
-        return iter(self.sounds.keys())
-
-    def __getitem__(self, item):
-        return self.sounds[item]
-
-    def __contains__(self, item):
-        if item in self.sounds:
-            return True
-        return False
-
-    @staticmethod
-    def get_speed_multiplier(text: str, max_len=500) -> float:
-        """
-        Play tts faster for longer messages
-        This gets the multiplier
-        :param text: Text to be sent to TTS, max len 500 for twitch
-        :param max_len:
-        :return:
-        """
-        text_len = len(text)
-        match text_len:
-            case text_len if text_len < max_len*.2:
-                return 1.0
-            case text_len if text_len < max_len*.3:
-                return 1.2
-            case text_len if text_len < max_len*.4:
-                return 1.3
-            case text_len if text_len < max_len*.6:
-                return 1.5
-            case text_len if text_len < max_len*.8:
-                return 1.7
-            case _:
-                return 2.5
-
-    def send_sound(self, sound_filename: str, new_process=True, *flags):
-        """
-        :param sound_filename: sound filename
-        :param new_process: determines if a new process is started or if current process
-            waits for sound to complete
-        :param flags: VLC flags
-        :return:
-        """
-        file_path = f'{self.base_path}\Sounds\{sound_filename}'
-        flags = list(flags)
-        if new_process:
-            sp = Process(target=subprocess.run, args=(
-                [path_to_vlc, file_path, '--play-and-exit', '--qt-start-minimized'] + flags,
-                )
-            )
-            sp.start()
-            return sp
-        subprocess.run([path_to_vlc, file_path, '--play-and-exit', '--qt-start-minimized'] + flags)
-
-
-class Messaging:
-
-    def __init__(self, server: str, token: str, nick: str, channel: str, port: str):
-        super().__init__()
-        self.server = server
-        self.token = token
-        self.nick = nick
-        self.channel = channel
-        self.port = port
-        self.sock: socket.socket
-        # self.define_sock()
-
-    @staticmethod
-    def _connect(server: str, token: str, nick: str, channel: str, port: str) -> socket.socket:
-        """
-        :return:
-        """
-        sock = socket.socket()
-        sock.connect((server, port))
-        sock.send(f"PASS {token}\r\n".encode('utf-8'))
-        sock.send(f"NICK {nick}\r\n".encode('utf-8'))
-        sock.send(f"JOIN #{channel}\r\n".encode('utf-8'))
-        return sock
-
-    def read_chat(self) -> str:
-        retry_time = 5
-        try:
-            resp = self.sock.recv(2048).decode('utf-8')
-            if resp.startswith('PING'):
-                self.sock.send(resp.replace('PING', 'PONG').encode('utf-8'))
-            elif len(resp) > 0:
-                message = parse_message(resp)
-                if is_valid_comment(message):
-                    return message
-        except Exception as e:
-            logger.error(f'{e}')
-            traceback.print_exc()
-            time.sleep(retry_time)
-            self.define_sock()
-
-    def define_sock(self):
-        self.sock = self._connect(
-            self.server, self.token, self.nick, self.channel, self.port
-        )
-
-    def __enter__(self):
-        self.define_sock()
-        return self.sock
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.sock.close()
-
-    def send_message(self, comment: str):
-        """
-        Sends a comment to chat defined in config file
-        Attempts to send message one additional time if fails
-        :param comment: str: text to be sent
-        :return:
-        """
-        try:
-            self.sock.send(f'PRIVMSG #{self.channel} :{comment}\n'.encode('utf-8'))
-        except ConnectionAbortedError or ConnectionResetError as e:
-            logger.error(f'{e}')
-            self.define_sock()
-            self.sock.send(f'PRIVMSG #{self.channel} :{comment}\n'.encode('utf-8'))
-
-    def PONG(self):
-        threading.Thread(target=self._PONG)
-
-    def _PONG(self):
-        while True:
-            resp = self.sock.recv(2048).decode('utf-8')
-            if resp.startswith('PING'):
-                print('\n\n\n\nPONG SENT FROM MESSAGING\n\n\n\n')
-                self.sock.send(resp.replace('PING', 'PONG').encode('utf-8'))
-
 
 class TTSProcess(MyDatabase):
     def __init__(self, dbtype='sqlite', base_path='.'):
@@ -324,6 +166,8 @@ class TwitchBot(MyDatabase):
         """
         :param dbtype:
         """
+        self.rolls = Roll()
+        self.removal_options = Roll.rewards
         self.twitch_url = 'https://twitch.tv/'
         self.check_out = f'Check them out at {self.twitch_url}'
         self.sounds = Sounds(base_path)
@@ -336,7 +180,7 @@ class TwitchBot(MyDatabase):
              '!strava': 'https://www.strava.com/athletes/58350447',
              '!swearjar': self.swearjar,
              '!time': self.send_time,
-             '!rollrewards': self.rollrewards,
+             '!rollrewards': Roll.reward_string,
              '!convert': '!convert <number><lb/kg/f/c/km/mi>',
              '!sounds': sound_commands,
              '!lurk': self.lurk,
@@ -356,11 +200,11 @@ class TwitchBot(MyDatabase):
             'bang you on every piece of furniture in the house.',
             'I’m not into watching sunsets, but I’d love to see you go down @{0}.'
         ]
-        self.roll_rewards = {100: self.roll_100,
-                             1: self.roll_1,
-                             5: self.roll_5,
-                             99: self.roll_99,
-        }
+        # self.roll_rewards = {100: self.roll_100,
+        #                      1: self.roll_1,
+        #                      5: self.roll_5,
+        #                      99: self.roll_99,
+        # }
         super().__init__(dbtype=dbtype, dbname=f'{base_path}\\Database\\Chat.db')
         self.comment_keywords['!commands'] = self._define_commands(self.comment_keywords)
         self.messaging = Messaging(
@@ -435,139 +279,110 @@ class TwitchBot(MyDatabase):
                     self.check_sound(message)
                     self.conversions(message)
                     self.check_lights(message)
-                    self.check_roll(message)
+                    self.rolls.check_roll(message)
                     self.check_remove_channel_owed(message)
 
-    def rollrewards(self, *args):
-        current_rewards = '100: 100 second timeout. ' \
-                          '69: Emote only mode for 3 minutes! ' \
-                          '99: SPOON OWES YOU 1 SPRINT. ' \
-                          '5: SPOON OWES YOU 5 PUSHUPS. ' \
-                          '1: SPOON OWES YOU 1 PULLUP'
-        self.messaging.send_message(current_rewards)
+    # def check_roll(self, message):
+    #     """
+    #
+    #     :param message:
+    #     :return:
+    #     """
+    #     comment = get_comment(message)
+    #     if re.match('!roll$', comment, flags=re.IGNORECASE):
+    #         session = self.get_session(self.db_engine)
+    #         user = get_user(message)
+    #         cd_type = 'roll_user'
+    #         user_cd = 0
+    #         current_time = time.time()
+    #         cooldown_obj = self.get_cooldown_obj(
+    #             message=message, cd_type=cd_type, cd_length=user_cd, session=session
+    #         )
+    #         diff = current_time-cooldown_obj.last_used
+    #         if diff > user_cd:
+    #             self.sounds.send_sound('dice.mp3')
+    #             roll = self.rigged_roll()
+    #             roll_response = self.determine_roll_reward(roll, message)
+    #             self.update_user_cd(cooldown_obj, current_time, session, length=user_cd)
+    #             self.messaging.send_message(roll_response)
+    #         else:
+    #             no = f'@{user} You got {int(user_cd-diff)} seconds before you can do that!'
+    #             self.messaging.send_message(no)
+    #         session.close()
 
-    def check_roll(self, message):
-        """
+    # def rigged_roll(self):
+    #     """
+    #
+    #     :return: int between 1 and 100 excluding the exceptions
+    #     """
+    #     # possible_rolls = [1,5,99]
+    #     # return possible_rolls[random.randint(0,len(possible_rolls)-1)]
+    #     # ^ for testing
+    #     roll_result = random.randint(1, 100)
+    #     if roll_result in [69]:
+    #         return self.rigged_roll()
+    #     else:
+    #         return roll_result
 
-        :param message:
-        :return:
-        """
-        comment = get_comment(message)
-        if re.match('!roll$', comment, flags=re.IGNORECASE):
-            session = self.get_session(self.db_engine)
-            user = get_user(message)
-            cd_type = 'roll_user'
-            user_cd = 0
-            current_time = time.time()
-            cooldown_obj = self.get_cooldown_obj(
-                message=message, cd_type=cd_type, cd_length=user_cd, session=session
-            )
-            diff = current_time-cooldown_obj.last_used
-            if diff > user_cd:
-                self.sounds.send_sound('dice.mp3')
-                roll = self.rigged_roll()
-                roll_response = self.determine_roll_reward(roll, message)
-                self.update_user_cd(cooldown_obj, current_time, session, length=user_cd)
-                self.messaging.send_message(roll_response)
-            else:
-                no = f'@{user} You got {int(user_cd-diff)} seconds before you can do that!'
-                self.messaging.send_message(no)
-            session.close()
-
-    def rigged_roll(self):
-        """
-
-        :return: int between 1 and 100 excluding the exceptions
-        """
-        # possible_rolls = [1,5,99]
-        # return possible_rolls[random.randint(0,len(possible_rolls)-1)]
-        # ^ for testing
-        roll_result = random.randint(1, 100)
-        if roll_result in [69]:
-            return self.rigged_roll()
-        else:
-            return roll_result
-
-    def determine_roll_reward(self, roll, message):
-        """
-
-        :param roll:
-        :param message:
-        :return:
-        """
-        return_func = self.roll_rewards.get(roll)
-        if return_func:
-            roll_response = return_func(message)
-        else:
-            roll_response = f'You rolled {roll}! YOU WIN NOTHING (!rollrewards for potential rewards)'
-        return roll_response
-
-    def roll_100(self, message):
-        """
-
-        :param message:
-        :return:
-        """
-        user = get_user(message)
-        roll_response = f'Congrats {user} you\'ve rolled 100! You win a 100 second timeout!'
-        self.messaging.send_message(f'/timeout {user} 100')
-        return roll_response
-
-    def roll_99(self, message):
-        """
-
-        :param message:
-        :return:
-        """
-        sprints_owed = self.add_channel_owed(message, 'sprint', 1)
-        user = get_user(message)
-        return_message = f'@{user} You\'ve rolled a 99! Spoon owes {sprints_owed} total sprints!'
-        return return_message
-
-    def roll_1(self, message):
-        """
-        1 roll is 1 pullup
-        :param message:
-        :return:
-        """
-        pullups_owed = self.add_channel_owed(message, 'pullups', 1)
-        user = get_user(message)
-        return_message = f'@{user} You\'ve rolled a 1! Spoon owes {pullups_owed} total pullups!'
-        return return_message
-
-    def roll_5(self, message):
-        """
-        5 roll is 5 pushups
-        :param message:
-        :return:
-        """
-        pushups_owed = self.add_channel_owed(message, 'pushups', 5)
-        user = get_user(message)
-        return_message = f'@{user} You\'ve rolled a 5! Spoon owes {pushups_owed} total pushups!'
-        return return_message
-
-    def add_channel_owed(self, message: str, stat: str, to_add: int, default=1) -> int:
-        """
-        If channel offers rewards to user this adds to_add to it
-        :param message:
-        :param stat:
-        :param to_add:
-        :param default:
-        :return:
-        """
-        session = self.get_session(self.db_engine)
-        stats_obj = self.get_channel_owed(session, message, stat)
-        if not stats_obj.stat_value:
-            channel_owed = default
-            session.add(stats_obj)
-        else:
-            channel_owed = int(stats_obj.stat_value) + to_add
-        if channel_owed < 0:
-            channel_owed = 0
-        stats_obj.stat_value = channel_owed
-        self.commit(session)
-        session.close()
-        return channel_owed
+    # def determine_roll_reward(self, roll, message):
+    #     """
+    #
+    #     :param roll:
+    #     :param message:
+    #     :return:
+    #     """
+    #     return_func = self.roll_rewards.get(roll)
+    #     if return_func:
+    #         roll_response = return_func(message)
+    #     else:
+    #         roll_response = f'You rolled {roll}! YOU WIN NOTHING (!rollrewards for potential rewards)'
+    #     return roll_response
+    #
+    # def roll_100(self, message):
+    #     """
+    #
+    #     :param message:
+    #     :return:
+    #     """
+    #     user = get_user(message)
+    #     roll_response = f'Congrats {user} you\'ve rolled 100! You win a 100 second timeout!'
+    #     self.messaging.send_message(f'/timeout {user} 100')
+    #     return roll_response
+    #
+    # def roll_99(self, message):
+    #     """
+    #
+    #     :param message:
+    #     :return:
+    #     """
+    #     sprints_owed = self.add_channel_owed(message, 'sprint', 1)
+    #     user = get_user(message)
+    #     return_message = f'@{user} You\'ve rolled a 99! Spoon owes {sprints_owed} total sprints!'
+    #     return return_message
+    #
+    # def roll_1(self, message):
+    #     """
+    #     1 roll is 1 pullup
+    #     :param message:
+    #     :return:
+    #     """
+    #     pullups_owed = self.add_channel_owed(message, 'pullups', 1)
+    #     user = get_user(message)
+    #     return_message = f'@{user} You\'ve rolled a 1! Spoon owes {pullups_owed} total pullups!'
+    #     return return_message
+    #
+    # def roll_5(self, message):
+    #     """
+    #     5 roll is 5 pushups
+    #     :param message:
+    #     :return:
+    #     """
+    #     session = self.get_session(self.db_engine)
+    #     pushups_owed = self.add_channel_owed(message, 'pushups', 5, session)
+    #     session.close()
+    #     user = get_user(message)
+    #     return_message = f'@{user} You\'ve rolled a 5! Spoon owes {pushups_owed} total pushups!'
+    #     return return_message
 
     def check_remove_channel_owed(self, message):
         """
@@ -575,7 +390,7 @@ class TwitchBot(MyDatabase):
         :param message:
         :return:
         """
-        removal_options = ['pushups', 'pullups', 'sprints']
+        # removal_options = ['pushups', 'pullups', 'sprints']
         comment = get_comment(message)
         if re.match('!remove', comment, flags=re.IGNORECASE):
             user = get_user(message).lower()
@@ -587,16 +402,21 @@ class TwitchBot(MyDatabase):
                     remove_value = comment_args[2]
                     try:
                         remove_value = -int(remove_value)
-                        if to_remove in removal_options:
-                            value_remaining = self.add_channel_owed(message, to_remove, remove_value)
+                        if to_remove in self.removal_options:
+                            session = self.get_session(self.db_engine)
+                            value_remaining = self.add_channel_owed(message, to_remove, remove_value, session)
                             response_message = f'{-remove_value} {to_remove} removed! {value_remaining} remaining!'
                             self.messaging.send_message(response_message)
+                            session.close()
                         else:
                             self.messaging.send_message('Format it properly ya dummy')
                     except:
                         self.messaging.send_message('Format it properly ya dummy')
                 else:
                     self.messaging.send_message('Format it properly ya dummy')
+            else:
+                self.messaging.send_message(f'@{user} BEGONE THOT')
+                self.messaging.send_message(f'/timeout @{user} 30')
 
     def check_lights(self, message: str):
         """
@@ -635,7 +455,7 @@ class TwitchBot(MyDatabase):
         :param comment: users comment in chat
         :return: True if spam False otherwise
         """
-        if re.search('bigfollow|\.ru', comment, flags=re.IGNORECASE):
+        if re.search('bigfollow|\.ru|\.cc', comment, flags=re.IGNORECASE):
             return True
         if re.search('buy', comment, flags=re.IGNORECASE) and re.search('follower', comment, flags=re.IGNORECASE):
             return True
