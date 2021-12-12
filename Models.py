@@ -170,6 +170,18 @@ class MyDatabase(ConnectDB):
         session.add(comment_obj)
         self.commit(session)
 
+    def get_channel_owed(self, session, message: str, stat: str)->UserStats:
+        """
+
+        :param session:
+        :param channel:
+        :return:
+        """
+        channel = get_channel(message)
+        user_obj = self.get_user_obj(channel,session)
+        stats_obj = self.get_stats_obj(user_obj,channel,stat,session)
+        return stats_obj
+
     def commit_comment_dne(self, comment: str, user: str, channel_obj: Channels, session, channel):
         """
 
@@ -221,7 +233,7 @@ class MyDatabase(ConnectDB):
         if stats:
             return stats
         else:
-            stats = UserStats(user_id=user_id, channel_id=channel_id, stat='channel_points', stat_value='0')
+            stats = UserStats(user_id=user_id, channel_id=channel_id, stat=stat, stat_value='0')
             session.add(stats)
             self.commit(session)
         return session.query(UserStats)\
@@ -317,27 +329,6 @@ class MyDatabase(ConnectDB):
             .all()
         return users_comments
 
-    def get_stats_obj_(self, user: Users, stat: str, session, channel) -> UserStats:
-        """
-
-        :param user:
-        :param stat:
-        :return:
-        """
-        channel = session.query(Channels) \
-            .where(Channels.channel == channel).first()
-        stats_obj = session.query(UserStats) \
-            .where(UserStats.user_id == user.user_id) \
-            .where(UserStats.channel_id == channel.channel_id)\
-            .where(UserStats.stat == stat).first()
-        if not stats_obj:
-            stats_obj = UserStats(
-                user_id=user.user_id,
-                channel_id=channel.channel_id,
-                stat=stat
-            )
-        return stats_obj
-
     def _give_chatpoints(self, channel, session):
         """
 
@@ -347,7 +338,7 @@ class MyDatabase(ConnectDB):
         stat = 'channel_points'
         for active_user in users:
             if active_user.user_id:
-                stats_obj = self.get_stats_obj_(active_user, stat, session, channel)
+                stats_obj = self.get_stats_obj(active_user, stat, session, channel)
                 if not stats_obj.stat_value:
                     stats_obj.stat_value = '1'
                 else:
@@ -403,6 +394,7 @@ class MyDatabase(ConnectDB):
             traceback.print_exc()
             logger.error(f'{e}')
             session.rollback()
+            session.close()
 
 if __name__ == '__main__':
     pass

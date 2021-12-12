@@ -9,6 +9,7 @@ class ShoutOuts:
 
 
 streamer_shoutouts = {
+    'beatsgameslife': ShoutOuts('Dude gets fitter every time he streams!'),
     'DaveGarge'.lower():
         ShoutOuts('Cyclist with a cause, helping underserved communities get on the saddle!',
                   sound='trousers.mp3'),

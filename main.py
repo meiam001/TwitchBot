@@ -212,7 +212,6 @@ class TTSProcess(MyDatabase):
         self.engine = pyttsx3.init()
         self.engine.setProperty('rate', 150)
         self.base_path = base_path
-        self.session = None
         self.sounds = Sounds(base_path)
         self.messaging = Messaging(
             channel=config.channel, server=config.server, nick=config.nick,
@@ -238,10 +237,11 @@ class TTSProcess(MyDatabase):
         comment = get_comment(message)
         if comment.startswith('!tts'):
             session = self.get_session(self.db_engine)
+            print(f'tts comment: {comment}')
             cd_type = 'tts_user'
             current_time = time.time()
             text = self.fix_tts_text(get_comment(message))
-            user_cd = 60
+            user_cd = 1
             global_cd = 0
             gcd_obj = self.get_gcd(message, session)
             gcd_obj.length = global_cd
@@ -260,6 +260,7 @@ class TTSProcess(MyDatabase):
             else:
                 self.messaging.send_message(cooldown)
                 session.close()
+
 
     @staticmethod
     def fix_tts_text(text: str) -> str:
@@ -330,11 +331,12 @@ class TwitchBot(MyDatabase):
         sound_commands = ', '.join(self.sounds)
         self.comment_keywords = {
              '!ftp': 'Current FTP is 321 (3.8 wkg)',
-             '!stats': self.send_stats,
+             # '!stats': self.send_stats,
              '!zp': 'https://www.zwiftpower.com/profile.php?z=2886856',
              '!strava': 'https://www.strava.com/athletes/58350447',
              '!swearjar': self.swearjar,
              '!time': self.send_time,
+             '!rollrewards': self.rollrewards,
              '!convert': '!convert <number><lb/kg/f/c/km/mi>',
              '!sounds': sound_commands,
              '!lurk': self.lurk,
@@ -354,6 +356,11 @@ class TwitchBot(MyDatabase):
             'bang you on every piece of furniture in the house.',
             'I’m not into watching sunsets, but I’d love to see you go down @{0}.'
         ]
+        self.roll_rewards = {100: self.roll_100,
+                             1: self.roll_1,
+                             5: self.roll_5,
+                             99: self.roll_99,
+        }
         super().__init__(dbtype=dbtype, dbname=f'{base_path}\\Database\\Chat.db')
         self.comment_keywords['!commands'] = self._define_commands(self.comment_keywords)
         self.messaging = Messaging(
@@ -366,11 +373,11 @@ class TwitchBot(MyDatabase):
             self.my_chat = 1
         else:
             self.my_chat = 0
-        self.session = self.get_session(self.db_engine)
-        self.check_for_channel()
-        for user in self.session.query(ActiveUsers):
-            self.session.delete(user)
-            self.commit(self.session)
+        session = self.get_session(self.db_engine)
+        self.check_for_channel(session)
+        for user in session.query(ActiveUsers):
+            session.delete(user)
+            self.commit(session)
         try:
             self.bb = BlinkyBoi('COM6')
             self.bb.default()
@@ -379,6 +386,7 @@ class TwitchBot(MyDatabase):
         except serial.serialutil.SerialException:
             print("No blinkylight detected")
             self.lights = False
+        session.close()
 
     def _define_light_commands(self):
         return ', '.join(self.bb.commands.keys())
@@ -389,17 +397,17 @@ class TwitchBot(MyDatabase):
         """
         self.read_chat()
 
-    def check_for_channel(self):
+    def check_for_channel(self, session):
         """
         Checks if channel exists in database, if not create entry for it
         :return:
         """
-        channel_obj = self.session.query(Channels) \
+        channel_obj = session.query(Channels) \
             .where(Channels.channel == config.channel).first()
         if not channel_obj:
             channel_obj = Channels(channel=config.channel)
-            self.session.add(channel_obj)
-        self.commit(self.session)
+            session.add(channel_obj)
+        self.commit(session)
 
     @staticmethod
     def _define_commands(comment_keywords: dict) -> str:
@@ -427,6 +435,168 @@ class TwitchBot(MyDatabase):
                     self.check_sound(message)
                     self.conversions(message)
                     self.check_lights(message)
+                    self.check_roll(message)
+                    self.check_remove_channel_owed(message)
+
+    def rollrewards(self, *args):
+        current_rewards = '100: 100 second timeout. ' \
+                          '69: Emote only mode for 3 minutes! ' \
+                          '99: SPOON OWES YOU 1 SPRINT. ' \
+                          '5: SPOON OWES YOU 5 PUSHUPS. ' \
+                          '1: SPOON OWES YOU 1 PULLUP'
+        self.messaging.send_message(current_rewards)
+
+    def check_roll(self, message):
+        """
+
+        :param message:
+        :return:
+        """
+        comment = get_comment(message)
+        if re.match('!roll$', comment, flags=re.IGNORECASE):
+            session = self.get_session(self.db_engine)
+            user = get_user(message)
+            cd_type = 'roll_user'
+            user_cd = 0
+            current_time = time.time()
+            cooldown_obj = self.get_cooldown_obj(
+                message=message, cd_type=cd_type, cd_length=user_cd, session=session
+            )
+            diff = current_time-cooldown_obj.last_used
+            if diff > user_cd:
+                self.sounds.send_sound('dice.mp3')
+                roll = self.rigged_roll()
+                roll_response = self.determine_roll_reward(roll, message)
+                self.update_user_cd(cooldown_obj, current_time, session, length=user_cd)
+                self.messaging.send_message(roll_response)
+            else:
+                no = f'@{user} You got {int(user_cd-diff)} seconds before you can do that!'
+                self.messaging.send_message(no)
+            session.close()
+
+    def rigged_roll(self):
+        """
+
+        :return: int between 1 and 100 excluding the exceptions
+        """
+        # possible_rolls = [1,5,99]
+        # return possible_rolls[random.randint(0,len(possible_rolls)-1)]
+        # ^ for testing
+        roll_result = random.randint(1, 100)
+        if roll_result in [69]:
+            return self.rigged_roll()
+        else:
+            return roll_result
+
+    def determine_roll_reward(self, roll, message):
+        """
+
+        :param roll:
+        :param message:
+        :return:
+        """
+        return_func = self.roll_rewards.get(roll)
+        if return_func:
+            roll_response = return_func(message)
+        else:
+            roll_response = f'You rolled {roll}! YOU WIN NOTHING (!rollrewards for potential rewards)'
+        return roll_response
+
+    def roll_100(self, message):
+        """
+
+        :param message:
+        :return:
+        """
+        user = get_user(message)
+        roll_response = f'Congrats {user} you\'ve rolled 100! You win a 100 second timeout!'
+        self.messaging.send_message(f'/timeout {user} 100')
+        return roll_response
+
+    def roll_99(self, message):
+        """
+
+        :param message:
+        :return:
+        """
+        sprints_owed = self.add_channel_owed(message, 'sprint', 1)
+        user = get_user(message)
+        return_message = f'@{user} You\'ve rolled a 99! Spoon owes {sprints_owed} total sprints!'
+        return return_message
+
+    def roll_1(self, message):
+        """
+        1 roll is 1 pullup
+        :param message:
+        :return:
+        """
+        pullups_owed = self.add_channel_owed(message, 'pullups', 1)
+        user = get_user(message)
+        return_message = f'@{user} You\'ve rolled a 1! Spoon owes {pullups_owed} total pullups!'
+        return return_message
+
+    def roll_5(self, message):
+        """
+        5 roll is 5 pushups
+        :param message:
+        :return:
+        """
+        pushups_owed = self.add_channel_owed(message, 'pushups', 5)
+        user = get_user(message)
+        return_message = f'@{user} You\'ve rolled a 5! Spoon owes {pushups_owed} total pushups!'
+        return return_message
+
+    def add_channel_owed(self, message: str, stat: str, to_add: int, default=1) -> int:
+        """
+        If channel offers rewards to user this adds to_add to it
+        :param message:
+        :param stat:
+        :param to_add:
+        :param default:
+        :return:
+        """
+        session = self.get_session(self.db_engine)
+        stats_obj = self.get_channel_owed(session, message, stat)
+        if not stats_obj.stat_value:
+            channel_owed = default
+            session.add(stats_obj)
+        else:
+            channel_owed = int(stats_obj.stat_value) + to_add
+        if channel_owed < 0:
+            channel_owed = 0
+        stats_obj.stat_value = channel_owed
+        self.commit(session)
+        session.close()
+        return channel_owed
+
+    def check_remove_channel_owed(self, message):
+        """
+
+        :param message:
+        :return:
+        """
+        removal_options = ['pushups', 'pullups', 'sprints']
+        comment = get_comment(message)
+        if re.match('!remove', comment, flags=re.IGNORECASE):
+            user = get_user(message).lower()
+            channel = get_channel(message).lower()
+            if user == channel:
+                comment_args = comment.split(' ')
+                if len(comment_args) == 3:
+                    to_remove = comment_args[1]
+                    remove_value = comment_args[2]
+                    try:
+                        remove_value = -int(remove_value)
+                        if to_remove in removal_options:
+                            value_remaining = self.add_channel_owed(message, to_remove, remove_value)
+                            response_message = f'{-remove_value} {to_remove} removed! {value_remaining} remaining!'
+                            self.messaging.send_message(response_message)
+                        else:
+                            self.messaging.send_message('Format it properly ya dummy')
+                    except:
+                        self.messaging.send_message('Format it properly ya dummy')
+                else:
+                    self.messaging.send_message('Format it properly ya dummy')
 
     def check_lights(self, message: str):
         """
@@ -645,27 +815,29 @@ class TwitchBot(MyDatabase):
             print(f'sound filename: {sound_filename}')
             self.sounds.send_sound(sound_filename)
 
-    def send_stats(self, message: str):
-        stats = self.get_channel_stats_obj(message, session=self.session)
-        if stats != '0':
-            points = stats.stat_value
-            send_string = f'You have {points} Spoon Bucks!'
-        else:
-            send_string = 'You have NO POINTS GET THE F*CK OUT (jk). ' \
-                          'But seriously you have no points, hang out in chat more and ' \
-                          'don\'t forget to keep your volume on.'
-        self.messaging.send_message(send_string)
+    # def send_stats(self, message: str):
+    #     stats = self.get_channel_stats_obj(message, session=self.session)
+    #     if stats != '0':
+    #         points = stats.stat_value
+    #         send_string = f'You have {points} Spoon Bucks!'
+    #     else:
+    #         send_string = 'You have NO POINTS GET THE F*CK OUT (jk). ' \
+    #                       'But seriously you have no points, hang out in chat more and ' \
+    #                       'don\'t forget to keep your volume on.'
+    #     self.messaging.send_message(send_string)
 
     def swearjar(self, message: str):
+        session = self.get_session(self.db_engine)
         user = get_user(message)
         channel = config.channel
-        comment_list = self.get_users_comments(user=user, channel=channel, session=self.session)
+        comment_list = self.get_users_comments(user=user, channel=channel, session=session)
         times_sworn = count_words(comment_list, swear_words)
         swear_ratio = str(times_sworn / len(comment_list))
         if len(swear_ratio) >= 4:
             swear_ratio = swear_ratio[:4]
         self.messaging.send_message(f'You have sworn {times_sworn} times.'
                                     f' Your ratio of swear words to total comments is {swear_ratio}')
+        session.close()
 
     def chatty_boi(self, message: str):
         """
@@ -673,23 +845,28 @@ class TwitchBot(MyDatabase):
         :return:
         """
         channel = get_channel(message)
-        top_commenters = self.get_top_commenters(session=self.session, limit=3, channel=channel)
+        session = self.get_session(self.db_engine)
+        top_commenters = self.get_top_commenters(session=session, limit=3, channel=channel)
         number1 = top_commenters[0]
         number2 = top_commenters[1]
         number3 = top_commenters[2]
         self.messaging.send_message(f'@{number1.user} is the chattiest boi, having sent {number1[1]} messages.'
                                     f' #2: @{number2.user} with {number2[1]}.'
                                     f' #3: @{number3.user} with {number3[1]}')
+        session.close()
 
     def save_chat(self, message: str):
         """
         :param message:
         :return:
         """
+        session = None
         try:
-            return_comment = self.write_message(message, self.session)
+            session = self.get_session(self.db_engine)
+            return_comment = self.write_message(message, session)
         except:
-            self.session = self.get_session(self.db_engine)
+            if session:
+                session.close()
             return_comment = ''
         if self.my_chat and return_comment:
             self.messaging.send_message(return_comment)
@@ -730,7 +907,6 @@ class ActiveUserProcess(MyDatabase):
         self.messaging = Messaging(
             channel=self.channel, server=self.server, nick=self.nick, port=self.port, token=self.token
         )
-        self.session = None
         self.tb = None
         self.main()
 
@@ -738,17 +914,18 @@ class ActiveUserProcess(MyDatabase):
         """
         :return:
         """
-        self.session = self.get_session(self.db_engine)
         update_interval = 60
         time_streamed = 0
         intervals_for_ad = 15
         while True:
-            self._give_chatpoints(session=self.session, channel=self.channel)
+            session = self.get_session(self.db_engine)
+            self._give_chatpoints(session=session, channel=self.channel)
             viewers = self._get_current_viewers(self.channel)
-            self._update_active_users(session=self.session, channel=self.channel, viewers=viewers)
+            self._update_active_users(session=session, channel=self.channel, viewers=viewers)
             time.sleep(update_interval)
             if time_streamed % (intervals_for_ad * update_interval) == 0:
                 self.send_info()
+            session.close()
             time_streamed += update_interval
 
     @staticmethod
