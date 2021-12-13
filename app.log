@@ -18,3 +18,4 @@
 2021-12-10 17:01:26,203 - main.py - send_info - __mp_main__ - ERROR - [WinError 10054] An existing connection was forcibly closed by the remote host
 2021-12-10 17:31:32,325 - main.py - send_info - __mp_main__ - ERROR - [WinError 10054] An existing connection was forcibly closed by the remote host
 2021-12-12 05:04:03,594 - main.py - read_chat - __main__ - ERROR - [WinError 10054] An existing connection was forcibly closed by the remote host
+2021-12-13 03:51:11,917 - Messaging.py - send_message - Messaging - ERROR - [WinError 10053] An established connection was aborted by the software in your host machine

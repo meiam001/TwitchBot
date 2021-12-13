@@ -1,7 +1,11 @@
+# FILE DOES NOT WORK KEEPING IN CASE OF FUTURE USE
+
 from blinkytape import BlinkyTape, serial
 import time
 
 class BlinkyBoi:
+    def _define_light_commands(self):
+        return ', '.join(self.bb.commands.keys())
     def __init__(self, port):
         self.bt = BlinkyTape(port)
         self.commands = {'!police': self.police,
@@ -9,6 +13,28 @@ class BlinkyBoi:
                          '!red': self.red,
                          '!purple': self.purple,
                          '!green': self.green}
+        try:
+            self.bb = BlinkyBoi('COM6')
+            self.bb.default()
+            self.comment_keywords['!lights'] = self._define_light_commands()
+            self.lights = True
+        except serial.serialutil.SerialException:
+            print("No blinkylight detected")
+            self.lights = False
+
+    def check_lights(self, message: str):
+        """
+        :param message:
+        :return:
+        """
+        comment = get_comment(message).lower()
+        if self.lights and comment in self.bb.commands:
+            try:
+                p = Process(target=self.bb.commands[comment]())
+                p.start()
+            except:
+                print("Lights DISCONNECTED")
+                self.lights = False
 
     def police(self):
         """

@@ -1,7 +1,16 @@
 *.db
 .config
 swearwords.py
+app.log
 venv
+APICalls.py
+blinkyboi.py
+blinkytape.py
+EventSubs.py
+example.log
+flask_entry.py
+RewardHandler.py
+TestingScript.py
 __pycache__
 .idea
 Database/*

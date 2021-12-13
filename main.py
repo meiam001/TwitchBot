@@ -1,24 +1,20 @@
 import log
 import re
-from Models import Channels, MyDatabase, ActiveUsers, Cooldowns
+from Models import MyDatabase, ActiveUsers
 from Sounds import Sounds
 import requests
 from setup import Config
 import traceback
-import threading
-import pyttsx3
 import time
 from multiprocessing import Process
 from swearwords import swear_words
 import random
-import os
-from Parsers import get_channel, get_comment, get_user, parse_message, count_words, is_valid_comment, Conversions
+from Parsers import get_channel, get_comment, get_user, count_words, Conversions
 from datetime import datetime
-from blinkyboi import BlinkyBoi, serial
 from ShoutOuts import streamer_shoutouts, chat_shoutouts
 from Messaging import Messaging
 from RollDice import Roll
-
+from TTS import Cooldown, TTSProcess
 timestamp_regex = '\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{6}'
 path_to_vlc = r'C:\Program Files\VideoLAN\VLC\vlc.exe'
 
@@ -26,145 +22,13 @@ swear_words_regex = '|'.join(swear_words)
 logger = log.logging.getLogger(__name__)
 
 
-class Cooldown:
-
-    @staticmethod
-    def cooldown(gcd_cooldown_obj: Cooldowns, cooldown_obj: Cooldowns, message:str, current_time) -> str:
-        """
-        :param gcd_cooldown_obj:
-        :param cooldown_obj:
-        :param message:
-        :param current_time:
-        :return:
-        """
-        global_diff = current_time - gcd_cooldown_obj.last_used
-        if global_diff > gcd_cooldown_obj.length:
-            user_diff = current_time - cooldown_obj.last_used
-            if user_diff > cooldown_obj.length:
-                return ''
-            else:
-                return f'@{get_user(message)} you still got ' \
-                       f'{cooldown_obj.length - int(user_diff)} seconds before you can do that'
-        else:
-            return f'{gcd_cooldown_obj.length - int(global_diff)} seconds remaining before command available'
-
-class TTSProcess(MyDatabase):
-    def __init__(self, dbtype='sqlite', base_path='.'):
-        super().__init__(dbtype=dbtype, dbname=f'{base_path}\\Database\\Chat.db')
-        self.engine = pyttsx3.init()
-        self.engine.setProperty('rate', 150)
-        self.base_path = base_path
-        self.sounds = Sounds(base_path)
-        self.messaging = Messaging(
-            channel=config.channel, server=config.server, nick=config.nick,
-            port=config.port, token=config.token
-        )
-        self.messaging.define_sock()
-        self.cooldowns = Cooldown()
-        ttsp = threading.Thread(target=self.read_chat)
-        ttsp.start()
-
-    def read_chat(self):
-        while True:
-            message = self.messaging.read_chat()
-            if message:
-                self.check_tts(message)
-
-    def check_tts(self, message: str):
-        """
-        If user uses !tts command sends it on stream
-        :param message:
-        :return:
-        """
-        comment = get_comment(message)
-        if comment.startswith('!tts'):
-            session = self.get_session(self.db_engine)
-            print(f'tts comment: {comment}')
-            cd_type = 'tts_user'
-            current_time = time.time()
-            text = self.fix_tts_text(get_comment(message))
-            user_cd = 1
-            global_cd = 0
-            gcd_obj = self.get_gcd(message, session)
-            gcd_obj.length = global_cd
-            cooldown_obj = self.get_cooldown_obj(
-                message=message, cd_type=cd_type, cd_length=user_cd, session=session
-            )
-            cooldown = self.cooldowns.cooldown(
-                gcd_cooldown_obj=gcd_obj, cooldown_obj=cooldown_obj, message=message,
-                current_time=current_time
-            )
-            if not cooldown:
-                self.update_gcd(current_time, session, message)
-                self.update_user_cd(cooldown_obj, current_time, session, length=user_cd)
-                session.close()
-                self.send_tts_text(text)
-            else:
-                self.messaging.send_message(cooldown)
-                session.close()
-
-
-    @staticmethod
-    def fix_tts_text(text: str) -> str:
-        """
-        People spam dumb annoying shit so, whitelist alphanumeric, ignore rest
-        :param text: !tts <message>
-        :return:
-        """
-        char_whitelist = '[^A-Za-z0-9\',.\s\?!]+'
-        text = text[4:]
-        text = re.sub(char_whitelist, '', text)
-        return text
-
-    def generate_tts_filename(self, file_name='tts0.mp3') -> str:
-        """
-        Recursively checks for file names for TTS,
-        If file is currently being played add one and try again.
-        Otherwise delete file and return current file_name
-        :param file_name:
-        :return: str: unused file name for text to speech
-        """
-        sounds_path = os.path.join(self.base_path, 'Sounds')
-        sounds_dir = os.listdir(sounds_path)
-        if file_name in sounds_dir:
-            file_path = os.path.join(sounds_path, file_name)
-            try:
-                os.remove(file_path)
-            except PermissionError:
-                file_number = re.search('\d+', file_name)
-                file_number = (int(file_number.group(0)) + 1)
-                file_name = re.sub('\d+', str(file_number), file_name, count=1)
-                return self.generate_tts_filename(file_name)
-        return file_name
-
-    def save_tts(self, text: str) -> str:
-        """
-        generates a TTS file and returns the file name
-        :param text: desired TTS
-        :return: str: file path to tts file
-        """
-        file_name = self.generate_tts_filename()
-        file_path = os.path.join(self.base_path, 'Sounds', file_name)
-        self.engine.save_to_file(text, file_path)
-        self.engine.runAndWait()
-        return file_name
-
-    def send_tts_text(self, text: str):
-        """
-        save TTS and play it
-        :param text:
-        :return:
-        """
-        new_process = False
-        speed_multiplier = self.sounds.get_speed_multiplier(text)
-        tts_file_path = self.save_tts(text)
-        self.sounds.send_sound(tts_file_path, new_process, f'--rate={speed_multiplier}')
-
-
 class TwitchBot(MyDatabase):
     def __init__(self, dbtype='sqlite'):
         """
-        :param dbtype:
+        Main process that reacts to user input
+        Currently responsible for every reactive command except TTS
+        Also saves every message sent to a database
+        :param dbtype: The database type. Currently only supports sqlite
         """
         self.rolls = Roll()
         self.removal_options = Roll.rewards
@@ -200,11 +64,6 @@ class TwitchBot(MyDatabase):
             'bang you on every piece of furniture in the house.',
             'I’m not into watching sunsets, but I’d love to see you go down @{0}.'
         ]
-        # self.roll_rewards = {100: self.roll_100,
-        #                      1: self.roll_1,
-        #                      5: self.roll_5,
-        #                      99: self.roll_99,
-        # }
         super().__init__(dbtype=dbtype, dbname=f'{base_path}\\Database\\Chat.db')
         self.comment_keywords['!commands'] = self._define_commands(self.comment_keywords)
         self.messaging = Messaging(
@@ -222,36 +81,14 @@ class TwitchBot(MyDatabase):
         for user in session.query(ActiveUsers):
             session.delete(user)
             self.commit(session)
-        try:
-            self.bb = BlinkyBoi('COM6')
-            self.bb.default()
-            self.comment_keywords['!lights'] = self._define_light_commands()
-            self.lights = True
-        except serial.serialutil.SerialException:
-            print("No blinkylight detected")
-            self.lights = False
         session.close()
-
-    def _define_light_commands(self):
-        return ', '.join(self.bb.commands.keys())
 
     def main(self):
         """
+        Begin reading chat. Continues till process is killed
         :return:
         """
         self.read_chat()
-
-    def check_for_channel(self, session):
-        """
-        Checks if channel exists in database, if not create entry for it
-        :return:
-        """
-        channel_obj = session.query(Channels) \
-            .where(Channels.channel == config.channel).first()
-        if not channel_obj:
-            channel_obj = Channels(channel=config.channel)
-            session.add(channel_obj)
-        self.commit(session)
 
     @staticmethod
     def _define_commands(comment_keywords: dict) -> str:
@@ -265,132 +102,34 @@ class TwitchBot(MyDatabase):
     def read_chat(self):
         """
         Waits for messages to come into chat
-        Entry point for every text based command
+        Entry point for every text based command except TTS
         :return:
         """
         while True:
             message = self.messaging.read_chat()
             if message:
                 self.save_chat(message)
-                if self.my_chat and not self.timeout_spam(message) and not re.match('!tts', message, flags=re.IGNORECASE):
+                if self.my_chat and not self.timeout_spam(message) \
+                        and not re.match('!tts', message, flags=re.IGNORECASE):
                     self.respond_to_message(message)
                     self.give_shoutout(message)
                     self.send_complement(message)
                     self.check_sound(message)
                     self.conversions(message)
-                    self.check_lights(message)
                     self.rolls.check_roll(message)
                     self.check_remove_channel_owed(message)
 
-    # def check_roll(self, message):
-    #     """
-    #
-    #     :param message:
-    #     :return:
-    #     """
-    #     comment = get_comment(message)
-    #     if re.match('!roll$', comment, flags=re.IGNORECASE):
-    #         session = self.get_session(self.db_engine)
-    #         user = get_user(message)
-    #         cd_type = 'roll_user'
-    #         user_cd = 0
-    #         current_time = time.time()
-    #         cooldown_obj = self.get_cooldown_obj(
-    #             message=message, cd_type=cd_type, cd_length=user_cd, session=session
-    #         )
-    #         diff = current_time-cooldown_obj.last_used
-    #         if diff > user_cd:
-    #             self.sounds.send_sound('dice.mp3')
-    #             roll = self.rigged_roll()
-    #             roll_response = self.determine_roll_reward(roll, message)
-    #             self.update_user_cd(cooldown_obj, current_time, session, length=user_cd)
-    #             self.messaging.send_message(roll_response)
-    #         else:
-    #             no = f'@{user} You got {int(user_cd-diff)} seconds before you can do that!'
-    #             self.messaging.send_message(no)
-    #         session.close()
-
-    # def rigged_roll(self):
-    #     """
-    #
-    #     :return: int between 1 and 100 excluding the exceptions
-    #     """
-    #     # possible_rolls = [1,5,99]
-    #     # return possible_rolls[random.randint(0,len(possible_rolls)-1)]
-    #     # ^ for testing
-    #     roll_result = random.randint(1, 100)
-    #     if roll_result in [69]:
-    #         return self.rigged_roll()
-    #     else:
-    #         return roll_result
-
-    # def determine_roll_reward(self, roll, message):
-    #     """
-    #
-    #     :param roll:
-    #     :param message:
-    #     :return:
-    #     """
-    #     return_func = self.roll_rewards.get(roll)
-    #     if return_func:
-    #         roll_response = return_func(message)
-    #     else:
-    #         roll_response = f'You rolled {roll}! YOU WIN NOTHING (!rollrewards for potential rewards)'
-    #     return roll_response
-    #
-    # def roll_100(self, message):
-    #     """
-    #
-    #     :param message:
-    #     :return:
-    #     """
-    #     user = get_user(message)
-    #     roll_response = f'Congrats {user} you\'ve rolled 100! You win a 100 second timeout!'
-    #     self.messaging.send_message(f'/timeout {user} 100')
-    #     return roll_response
-    #
-    # def roll_99(self, message):
-    #     """
-    #
-    #     :param message:
-    #     :return:
-    #     """
-    #     sprints_owed = self.add_channel_owed(message, 'sprint', 1)
-    #     user = get_user(message)
-    #     return_message = f'@{user} You\'ve rolled a 99! Spoon owes {sprints_owed} total sprints!'
-    #     return return_message
-    #
-    # def roll_1(self, message):
-    #     """
-    #     1 roll is 1 pullup
-    #     :param message:
-    #     :return:
-    #     """
-    #     pullups_owed = self.add_channel_owed(message, 'pullups', 1)
-    #     user = get_user(message)
-    #     return_message = f'@{user} You\'ve rolled a 1! Spoon owes {pullups_owed} total pullups!'
-    #     return return_message
-    #
-    # def roll_5(self, message):
-    #     """
-    #     5 roll is 5 pushups
-    #     :param message:
-    #     :return:
-    #     """
-    #     session = self.get_session(self.db_engine)
-    #     pushups_owed = self.add_channel_owed(message, 'pushups', 5, session)
-    #     session.close()
-    #     user = get_user(message)
-    #     return_message = f'@{user} You\'ve rolled a 5! Spoon owes {pushups_owed} total pushups!'
-    #     return return_message
-
     def check_remove_channel_owed(self, message):
         """
-
+        Users can roll the dice for certain rewards
+        If reward is fulfilled, use this command to remove
+        FORMAT: !remove <reward> <value>
+            ex: !remove pushups 10
+        Can only be used by channel owner
+        Times out trolls trying to use it
         :param message:
         :return:
         """
-        # removal_options = ['pushups', 'pullups', 'sprints']
         comment = get_comment(message)
         if re.match('!remove', comment, flags=re.IGNORECASE):
             user = get_user(message).lower()
@@ -418,19 +157,6 @@ class TwitchBot(MyDatabase):
                 self.messaging.send_message(f'@{user} BEGONE THOT')
                 self.messaging.send_message(f'/timeout @{user} 30')
 
-    def check_lights(self, message: str):
-        """
-        :param message:
-        :return:
-        """
-        comment = get_comment(message).lower()
-        if self.lights and comment in self.bb.commands:
-            try:
-                p = Process(target=self.bb.commands[comment]())
-                p.start()
-            except:
-                print("Lights DISCONNECTED")
-                self.lights = False
 
     def timeout_spam(self, message: str) -> bool:
         """
@@ -457,9 +183,11 @@ class TwitchBot(MyDatabase):
         """
         if re.search('bigfollow|\.ru|\.cc', comment, flags=re.IGNORECASE):
             return True
-        if re.search('buy', comment, flags=re.IGNORECASE) and re.search('follower', comment, flags=re.IGNORECASE):
+        if re.search('buy', comment, flags=re.IGNORECASE) \
+                and re.search('follower', comment, flags=re.IGNORECASE):
             return True
-        if re.search('become', comment, flags=re.IGNORECASE) and re.search('famous', comment, flags=re.IGNORECASE):
+        if re.search('become', comment, flags=re.IGNORECASE) \
+                and re.search('famous', comment, flags=re.IGNORECASE):
             return True
         return False
 
@@ -467,7 +195,6 @@ class TwitchBot(MyDatabase):
         """
         processes messages and converts units for chat (f/c/kg/pounds)
         :param message:
-        :return: None
         """
         comment = get_comment(message)
         keyword = '!convert'
@@ -486,6 +213,11 @@ class TwitchBot(MyDatabase):
 
     @staticmethod
     def proper_conversion_comment(comment: str) -> bool:
+        """
+        Ensures !convert comment is formatted properly
+        :param comment: Comment user sent to chat
+        :return:
+        """
         return bool(re.match(
             '!convert\s-?\d+(\.\d+)?\s?(f|c|kg|lb)\Z',
             comment,
@@ -495,8 +227,8 @@ class TwitchBot(MyDatabase):
     @staticmethod
     def get_conversion_return_message(conversion: Conversions) -> str:
         """
-        :param conversion:
-        :return:
+        Gets message to send to users using convert command
+        :param conversion: Conversion class containing conversion details
         """
         return_message = ''
         to_convert = conversion.to_convert
@@ -541,9 +273,8 @@ class TwitchBot(MyDatabase):
 
     def send_complement(self, message: str):
         """
-        Say a nice thing to chat ~2% of the time
+        Say a nice thing to chat ~1% of the time
         :param message: IRC formatted message
-        :return:
         """
         if random.randint(0, 100) == 1:
             user = get_user(message)
@@ -602,7 +333,7 @@ class TwitchBot(MyDatabase):
     def give_shoutout(self, message: str):
         """
         Certain users frequent my chat, this gives them a shoutout with an audio cue!
-        :param message: IRC formatted message
+        :param message:
         :return:
         """
         user = get_user(message)
@@ -647,6 +378,11 @@ class TwitchBot(MyDatabase):
     #     self.messaging.send_message(send_string)
 
     def swearjar(self, message: str):
+        """
+        Lets a user know how many times they've sworn and the ratio of swearwords/total messages
+        :param message:
+        :return:
+        """
         session = self.get_session(self.db_engine)
         user = get_user(message)
         channel = config.channel
@@ -661,6 +397,8 @@ class TwitchBot(MyDatabase):
 
     def chatty_boi(self, message: str):
         """
+        Lets users know who's sent the most messages
+        Currently tells of top 3
         :param message:
         :return:
         """
@@ -677,8 +415,8 @@ class TwitchBot(MyDatabase):
 
     def save_chat(self, message: str):
         """
+        Save user chat messages to database defined in __init__
         :param message:
-        :return:
         """
         session = None
         try:
@@ -692,37 +430,21 @@ class TwitchBot(MyDatabase):
             self.messaging.send_message(return_comment)
             self.sounds.send_sound('cheering.mp3')
 
-    def is_not_keyword(self, message: str) -> bool:
-        """
-        :param message:
-        :return:
-        """
-        comment = get_comment(message)
-        if comment not in self.comment_keywords and comment not in self.comment_keywords.values():
-            return True
-        return False
-
-
 class ActiveUserProcess(MyDatabase):
 
-    def __init__(self, token, server,
-                 port, nick, channel, base_path, dbtype='sqlite'
-                 ):
+    def __init__(self, config: Config):
         """
-        :param token:
-        :param server:
-        :param port:
-        :param nick:
-        :param channel:
-        :param base_path:
+        Tracks current users and gives them spoonbucks at given time intervals
+        Also sends an "ad" asking users to follow every x time intervals
+        :param config: Config class with basic config attributes
         """
-        super().__init__(dbtype=dbtype, dbname=f'{base_path}\\Database\\Chat.db')
-        self.token = token
-        self.server = server
-        self.port = port
-        self.base_path = base_path
-        self.nick = nick
-        self.channel = channel
+        super().__init__(dbtype=config.dbtype, dbname=f'{config.base_path}\\Database\\Chat.db')
+        self.token = config.token
+        self.server = config.server
+        self.port = config.port
+        self.base_path = config.base_path
+        self.nick = config.nick
+        self.channel = config.channel
         self.sounds = Sounds(self.base_path)
         self.messaging = Messaging(
             channel=self.channel, server=self.server, nick=self.nick, port=self.port, token=self.token
@@ -732,6 +454,8 @@ class ActiveUserProcess(MyDatabase):
 
     def main(self):
         """
+        Main passive process to give users points every update_interval seconds
+        Also sends "follow me" ad every intervals_for_ad intervals
         :return:
         """
         update_interval = 60
@@ -751,8 +475,8 @@ class ActiveUserProcess(MyDatabase):
     @staticmethod
     def _get_current_viewers(channel: str) -> [str]:
         """
-
-        :return:
+        Gets list of people currently watching stream for point allocation
+        :return: List of current viewers
         """
         channel_viewers = f'https://tmi.twitch.tv/group/user/{channel}/chatters'
         r = requests.get(channel_viewers)
@@ -790,9 +514,7 @@ if __name__ == '__main__':
     )
     tts = TTSProcess()
     p = Process(target=ActiveUserProcess, kwargs={
-        "token": config.token, "server": config.server,
-        "port": config.port, "nick": config.nick, "channel": config.channel,
-        "base_path": config.base_path}
+        "config": config}
                 )
     p.start()
     tb.main()

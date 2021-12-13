@@ -6,9 +6,11 @@ from sqlalchemy.sql import func, desc
 from Parsers import get_channel, get_user, get_comment
 import os
 import log
+from setup import Config
 import time
 Base = declarative_base()
 
+config = Config()
 logger = log.logging.getLogger(__name__)
 
 class UserStats(Base):
@@ -83,9 +85,21 @@ class ConnectDB:
 class MyDatabase(ConnectDB):
 
     def __init__(self, dbtype='sqlite', dbname='Chat.db', username='', password=''):
+        """
+        Data layer for interacting with database
+        :param dbtype: Currently only support sqlite
+        :param dbname: database name
+        :param username: username for database
+        :param password: password for database
+        """
         super().__init__(dbtype, dbname, username, password)
 
     def create_db_tables(self):
+        """
+        Creates tables if they don't exist
+        MUST MATCH TABLE OBJECTS DEFINED ABOVE
+        :return:
+        """
         self.create_folder('.', 'Database')
         metadata = MetaData()
 
@@ -140,9 +154,9 @@ class MyDatabase(ConnectDB):
             print("Error occurred during Table creation!")
             print(e)
 
-    def write_message(self, message: str, session)->str:
+    def write_message(self, message: str, session) -> str:
         """
-
+        Writes user message to database
         :param message:
         :return:
         """
@@ -159,35 +173,45 @@ class MyDatabase(ConnectDB):
 
     def commit_comment_exists(self, comment: str, user_obj: Users, channel_obj: Channels, session):
         """
-
-        :param comment:
-        :param user_obj:
-        :param channel_obj:
+        If user exists, write comment to database
+        :param comment: user comment
+        :param user_obj: User object
+        :param channel_obj: Channel object
         :return:
         """
         comment_obj = Comments(comment=comment, user_id=user_obj.user_id, channel_id=channel_obj.channel_id)
         session.add(comment_obj)
         self.commit(session)
 
-    def get_channel_owed(self, session, message: str, stat: str)->UserStats:
+    def get_channel_owed(self, session, message: str, stat: str) -> UserStats:
         """
-
-        :param session:
-        :param channel:
-        :return:
+        Get UserStats object with the label "stat"
+        :param stat: string label for type of stat
         """
         channel = get_channel(message)
         user_obj = self.get_user_obj(channel,session)
         stats_obj = self.get_stats_obj(user_obj,channel,stat,session)
         return stats_obj
 
-    def commit_comment_dne(self, comment: str, user: str, channel_obj: Channels, session, channel):
+    def check_for_channel(self, session):
         """
-
-        :param comment:
-        :param user:
-        :param channel_obj:
+        Checks if channel exists in database, if not create entry for it
         :return:
+        """
+        channel_obj = session.query(Channels) \
+            .where(Channels.channel == config.channel).first()
+        if not channel_obj:
+            channel_obj = Channels(channel=config.channel)
+            session.add(channel_obj)
+        self.commit(session)
+
+    def commit_comment_dne(self, comment: str, user: str, channel_obj: Channels, session, channel) -> str:
+        """
+        if user doesnt exist in database, commit user and comment
+        :param comment: user comment
+        :param user: user's name string
+        :param channel_obj: Channel object
+        :return: string welcoming user
         """
         user_obj = Users(user=user)
         session.add(user_obj)
@@ -203,10 +227,23 @@ class MyDatabase(ConnectDB):
         return f'It\'s @{user}\'s first time in chat! Say hi! (And don\'t forget to follow :D)'
 
     def create_folder(self, path: str, folder_name: str):
+        """
+        creates database folder
+        :param path: full path leading to folder
+        :param folder_name: folder name
+        :return:
+        """
         if folder_name not in os.listdir(path):
             os.mkdir(f'{path}\\{folder_name}')
 
     def get_gcd(self, message, session, gcd=0) -> Cooldowns:
+        """
+        gets global cooldown object
+        :param message:
+        :param session:
+        :param gcd: global cooldown in seconds
+        :return:
+        """
         channel = get_channel(message)
         cooldown_object = session.query(Cooldowns)\
             .join(Channels, Channels.channel_id == Cooldowns.channel_id) \
@@ -217,7 +254,14 @@ class MyDatabase(ConnectDB):
             cooldown_object = self.insert_cooldown(message, session, gcd, 'Global')
         return cooldown_object
 
-    def get_channel_stats_obj(self, message, session, stat='channel_points'):
+    def get_channel_stats_obj(self, message, session, stat='channel_points') -> UserStats:
+        """
+        get channel_points UserStats object
+        :param message:
+        :param session:
+        :param stat:
+        :return:
+        """
         channel=get_channel(message)
         user_id = session.query(Users)\
             .where(Users.user==get_user(message))\
@@ -240,7 +284,15 @@ class MyDatabase(ConnectDB):
             .where(UserStats.stat==stat)\
             .where(UserStats.channel_id==channel_id).first()
 
-    def get_cooldown_obj(self, message, cd_type, session, cd_length=180):
+    def get_cooldown_obj(self, message, cd_type, session, cd_length=180) -> Cooldowns:
+        """
+        Gets cooldown object
+        :param message:
+        :param cd_type:
+        :param session:
+        :param cd_length:
+        :return:
+        """
         user = get_user(message)
         user_obj = self.get_user_obj(user, session)
         cooldown_obj = session.query(Cooldowns)\
@@ -252,6 +304,15 @@ class MyDatabase(ConnectDB):
         return cooldown_obj
 
     def insert_cooldown(self, message: str, session, cd_length, cd_type, user_id=None) -> Cooldowns:
+        """
+        inserts new cooldown type
+        :param message:
+        :param session:
+        :param cd_length:
+        :param cd_type:
+        :param user_id:
+        :return:
+        """
         channel = self.get_channel_obj(message, session)
         cooldown_object = Cooldowns(channel_id=channel.channel_id,
                                     user_id=user_id,
@@ -263,23 +324,45 @@ class MyDatabase(ConnectDB):
         return cooldown_object
 
     def update_gcd(self, current_time, session, message, length=10):
+        """
+        Updates global cooldown
+        :param current_time:
+        :param session:
+        :param message:
+        :param length:
+        :return:
+        """
         gcd_obj = self.get_gcd(message, session)
         gcd_obj.last_used = current_time
         gcd_obj.length = length
         self.commit(session)
 
     def update_user_cd(self, cooldown_obj, current_time, session, length=180):
+        """
+        Updates user cooldown
+        :param cooldown_obj:
+        :param current_time:
+        :param session:
+        :param length:
+        :return:
+        """
         cooldown_obj.last_used = current_time
         cooldown_obj.length = length
         self.commit(session)
 
     def get_channel_obj(self, message, session) -> Channels:
+        """
+        get Channel object
+        :param message:
+        :param session:
+        :return:
+        """
         channel_name = get_channel(message)
         return session.query(Channels).where(Channels.channel==channel_name).first()
 
     def get_stats_obj(self, user: Users, channel: str, stat: str, session) -> UserStats:
         """
-
+        get user stats object of label stat
         :param user:
         :param stat:
         :return:
@@ -320,6 +403,12 @@ class MyDatabase(ConnectDB):
         return channel_owed
 
     def get_user_obj(self, user: str, session) -> Users:
+        """
+        get user object based on user name
+        :param user:
+        :param session:
+        :return:
+        """
         user = session.query(Users).where(Users.user==user).first()
         if not user:
             user = Users(user)
@@ -327,18 +416,9 @@ class MyDatabase(ConnectDB):
             self.commit(session)
         return user
 
-    def subtract_points(self, user, channel, points_to_subtract: int, session):
-        user_obj = self.get_user_obj(user, session=session)
-        stats_obj = self.get_stats_obj(
-            user=user_obj, channel=channel, stat='channel_points', session=session
-        )
-        new_point_value = int(stats_obj.stat_value)-points_to_subtract
-        stats_obj.stat_value = str(new_point_value)
-        self.commit(session)
-        return stats_obj.stat_value
-
     def get_users_comments(self, user, channel, session) -> [Comments]:
         """
+        Gets all users comments
         :return:
         """
         channel = session.query(Channels).where(Channels.channel == channel).first()
@@ -351,7 +431,7 @@ class MyDatabase(ConnectDB):
 
     def _give_chatpoints(self, channel, session):
         """
-
+        Gives chatpoints
         :return:
         """
         users = session.query(ActiveUsers).all()
@@ -369,6 +449,13 @@ class MyDatabase(ConnectDB):
 
     @staticmethod
     def get_top_commenters(channel, limit, session):
+        """
+        gets top commentrs
+        :param channel:
+        :param limit:
+        :param session:
+        :return:
+        """
         return session.query(Comments.user_id, func.count(Comments.user_id), Users.user) \
             .join(Users, Users.user_id == Comments.user_id) \
             .join(Channels, Channels.channel_id == Comments.channel_id) \
