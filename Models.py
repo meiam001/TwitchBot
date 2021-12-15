@@ -61,6 +61,14 @@ class Cooldowns(Base):
     created = Column(DATETIME, default=func.now())
     last_updated = Column(DateTime, onupdate=datetime.datetime.now)
 
+class ChannelState(Base):
+    __tablename__ = 'channelState'
+    channelState_id = Column(Integer, primary_key=True)
+    channel_id = Column(Integer, ForeignKey('channels.channel_id'), nullable=False)
+    state = Column(String, nullable=False)
+    state_value = Column(String, nullable=False)
+    created = Column(DATETIME, default=func.now())
+    last_updated = Column(DateTime, onupdate=datetime.datetime.now)
 
 class ConnectDB:
     DB_ENGINE = {
@@ -73,7 +81,8 @@ class ConnectDB:
         dbtype = dbtype.lower()
         if dbtype in self.DB_ENGINE.keys():
             engine_url = self.DB_ENGINE[dbtype].format(DB=dbname)
-            self.db_engine = create_engine(engine_url, connect_args={'timeout': 20})
+            self.db_engine = create_engine(engine_url, connect_args={'timeout': 20,
+                                                                     'check_same_thread': False})
         else:
             print("DBType is not found in DB_ENGINE")
 
@@ -147,6 +156,16 @@ class MyDatabase(ConnectDB):
                             Column('last_updated', DateTime, onupdate=datetime.datetime.now),
                             Column('created', DATETIME, default=func.now())
                           )
+
+        channelState = Table('channelState', metadata,
+                Column('channelState_id', Integer, primary_key=True),
+                Column('channel_id', Integer, ForeignKey('channels.channel_id'), nullable=False),
+                Column('state', String, nullable=False),
+                Column('state_value', String, nullable=False),
+                Column('created', DATETIME, default=func.now()),
+                Column('last_updated', DateTime, onupdate=datetime.datetime.now)
+                             )
+
         try:
             metadata.create_all(self.db_engine)
             print("Tables created")
@@ -190,8 +209,28 @@ class MyDatabase(ConnectDB):
         """
         channel = get_channel(message)
         user_obj = self.get_user_obj(channel,session)
-        stats_obj = self.get_stats_obj(user_obj,channel,stat,session)
+        stats_obj = self.get_stats_obj(user_obj, channel, stat, session)
         return stats_obj
+
+    def get_channel_state(self, channel: str, session, state: str, default_state='0') -> ChannelState:
+        """
+        :param message:
+        :param session:
+        :param state:
+        :return:
+        """
+        channel_obj = self.get_channel_obj(channel, session)
+        state_obj = session.query(ChannelState)\
+            .where(ChannelState.channel_id == channel_obj.channel_id)\
+            .where(ChannelState.state == state)\
+                .first()
+        if not state_obj:
+            state_obj = ChannelState(channel_id=channel_obj.channel_id,
+                                     state=state,
+                                     state_value=default_state,
+                                     )
+            session.add(state_obj)
+        return state_obj
 
     def check_for_channel(self, session):
         """
@@ -313,7 +352,8 @@ class MyDatabase(ConnectDB):
         :param user_id:
         :return:
         """
-        channel = self.get_channel_obj(message, session)
+        channel = get_channel(message)
+        channel = self.get_channel_obj(channel, session)
         cooldown_object = Cooldowns(channel_id=channel.channel_id,
                                     user_id=user_id,
                                     cd_type=cd_type,
@@ -350,15 +390,14 @@ class MyDatabase(ConnectDB):
         cooldown_obj.length = length
         self.commit(session)
 
-    def get_channel_obj(self, message, session) -> Channels:
+    def get_channel_obj(self, channel, session) -> Channels:
         """
         get Channel object
-        :param message:
+        :param channel:
         :param session:
         :return:
         """
-        channel_name = get_channel(message)
-        return session.query(Channels).where(Channels.channel==channel_name).first()
+        return session.query(Channels).where(Channels.channel==channel).first()
 
     def get_stats_obj(self, user: Users, channel: str, stat: str, session) -> UserStats:
         """
@@ -367,16 +406,15 @@ class MyDatabase(ConnectDB):
         :param stat:
         :return:
         """
-        channel = session.query(Channels) \
-            .where(Channels.channel == channel).first()
+        channel_obj = self.get_channel_obj(channel, session)
         stats_obj = session.query(UserStats) \
             .where(UserStats.user_id == user.user_id) \
-            .where(UserStats.channel_id == channel.channel_id)\
+            .where(UserStats.channel_id == channel_obj.channel_id)\
             .where(UserStats.stat == stat).first()
         if not stats_obj:
             stats_obj = UserStats(
                 user_id=user.user_id,
-                channel_id=channel.channel_id,
+                channel_id=channel_obj.channel_id,
                 stat=stat
             )
         return stats_obj
@@ -438,7 +476,7 @@ class MyDatabase(ConnectDB):
         stat = 'channel_points'
         for active_user in users:
             if active_user.user_id:
-                stats_obj = self.get_stats_obj(active_user, stat, session, channel)
+                stats_obj = self.get_stats_obj(user=active_user, stat=stat, session=session, channel=channel)
                 if not stats_obj.stat_value:
                     stats_obj.stat_value = '1'
                 else:

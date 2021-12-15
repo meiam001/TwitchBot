@@ -36,6 +36,8 @@ class Cooldown:
 
 
 class TTSProcess(MyDatabase):
+    user_cd = 60
+    global_cd = 0
     def __init__(self, dbtype='sqlite', base_path='.'):
         """
         Process that deals with users text to speech.
@@ -44,15 +46,11 @@ class TTSProcess(MyDatabase):
         :param base_path: base path for bot
         """
         super().__init__(dbtype=dbtype, dbname=f'{base_path}\\Database\\Chat.db')
+        # time.sleep(5)
         self.engine = pyttsx3.init()
         self.engine.setProperty('rate', 150)
         self.base_path = base_path
         self.sounds = Sounds(base_path)
-        self.messaging = Messaging(
-            channel=config.channel, server=config.server, nick=config.nick,
-            port=config.port, token=config.token
-        )
-        self.messaging.define_sock()
         self.cooldowns = Cooldown()
         ttsp = threading.Thread(target=self.read_chat)
         ttsp.start()
@@ -61,6 +59,9 @@ class TTSProcess(MyDatabase):
         """
         Reads chat to react to !tts
         """
+        time.sleep(3)
+        self.messaging = Messaging(config)
+        self.messaging.define_sock()
         while True:
             message = self.messaging.read_chat()
             if message:
@@ -79,8 +80,8 @@ class TTSProcess(MyDatabase):
             cd_type = 'tts_user'
             current_time = time.time()
             text = self.fix_tts_text(get_comment(message))
-            user_cd = 60
-            global_cd = 0
+            user_cd = self.user_cd
+            global_cd = self.global_cd
             gcd_obj = self.get_gcd(message, session)
             gcd_obj.length = global_cd
             cooldown_obj = self.get_cooldown_obj(

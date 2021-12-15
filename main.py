@@ -14,6 +14,7 @@ from datetime import datetime
 from ShoutOuts import streamer_shoutouts, chat_shoutouts
 from Messaging import Messaging
 from RollDice import Roll
+from Compliments import Compliments
 from TTS import Cooldown, TTSProcess
 timestamp_regex = '\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{6}'
 path_to_vlc = r'C:\Program Files\VideoLAN\VLC\vlc.exe'
@@ -30,6 +31,8 @@ class TwitchBot(MyDatabase):
         Also saves every message sent to a database
         :param dbtype: The database type. Currently only supports sqlite
         """
+        self.messaging = Messaging(config=config)
+        self.messaging.define_sock()
         self.rolls = Roll()
         self.removal_options = Roll.rewards
         self.twitch_url = 'https://twitch.tv/'
@@ -38,10 +41,6 @@ class TwitchBot(MyDatabase):
         self.cooldowns = Cooldown()
         sound_commands = ', '.join(self.sounds)
         self.comment_keywords = {
-             '!ftp': 'Current FTP is 321 (3.8 wkg)',
-             # '!stats': self.send_stats,
-             '!zp': 'https://www.zwiftpower.com/profile.php?z=2886856',
-             '!strava': 'https://www.strava.com/athletes/58350447',
              '!swearjar': self.swearjar,
              '!time': self.send_time,
              '!rollrewards': Roll.reward_string,
@@ -49,27 +48,10 @@ class TwitchBot(MyDatabase):
              '!sounds': sound_commands,
              '!lurk': self.lurk,
              '!chattyboi': self.chatty_boi,
-             '!trainer': 'My trainer is the Saris H3. I love it',
-             '!bike': 'I ride the 2020 Trek Emonda 105 groupset with Reynolds Blacklabel 65 wheels'
         }
-        self.complements = [
-            '@{0} are you medusa because you make me rock hard!',
-            'Hey @{0}, my name’s Microsoft. Can I crash at your place tonight?',
-            'Hey @{0}, sexy called, they said it was you!',
-            '@{0}, if you were words on a page, you’d be fine print.',
-            'Damn @{0} are you a parking ticket? Because you\'ve got fine written all over you',
-            '@{0} Are you covid? Because you take my breath away!',
-            '@{0} if you were a flower you’d be a damn-delion.',
-            '@{0} you\'re like my pinky toe, because I’m gonna '
-            'bang you on every piece of furniture in the house.',
-            'I’m not into watching sunsets, but I’d love to see you go down @{0}.'
-        ]
         super().__init__(dbtype=dbtype, dbname=f'{base_path}\\Database\\Chat.db')
         self.comment_keywords['!commands'] = self._define_commands(self.comment_keywords)
-        self.messaging = Messaging(
-            channel=config.channel, server=config.server, nick=config.nick, port=config.port, token=config.token
-        )
-        self.messaging.define_sock()
+        self.compliments = Compliments(self.messaging)
         self.sock = self.messaging.sock
         self.channel_obj = None
         if config.channel == 'slowspoon':
@@ -97,7 +79,7 @@ class TwitchBot(MyDatabase):
         :param comment_keywords:
         :return:
         """
-        return ', '.join(list(comment_keywords.keys()) + ['!tts <message>'])
+        return ', '.join(list(comment_keywords.keys()) + ['!tts <message>', '!roll', '!owed'])
 
     def read_chat(self):
         """
@@ -111,13 +93,36 @@ class TwitchBot(MyDatabase):
                 self.save_chat(message)
                 if self.my_chat and not self.timeout_spam(message) \
                         and not re.match('!tts', message, flags=re.IGNORECASE):
+                    print('SCRIPT: ' + __name__)
                     self.respond_to_message(message)
                     self.give_shoutout(message)
-                    self.send_complement(message)
+                    self.compliments(message)
                     self.check_sound(message)
                     self.conversions(message)
                     self.rolls.check_roll(message)
                     self.check_remove_channel_owed(message)
+                    self.check_owed(message)
+
+    def check_owed(self, message):
+        """
+        Check what streamer owes chat
+        :param message:
+        :return:
+        """
+        stat_objects = []
+        comment = get_comment(message)
+        if re.match('!owed$', comment, flags=re.IGNORECASE):
+            owed_string = ''
+            session = self.get_session(self.db_engine)
+            channel = get_channel(message)
+            user_obj = self.get_user_obj(channel, session)
+            for stat in self.rolls.numerical_rewards:
+                stat_obj = self.get_stats_obj(user_obj, channel, stat, session)
+                stat_objects.append(stat_obj)
+            for stat_obj in stat_objects:
+                owed_string += f'{stat_obj.stat_value} {stat_obj.stat}. '
+            self.messaging.send_message(owed_string)
+
 
     def check_remove_channel_owed(self, message):
         """
@@ -271,16 +276,6 @@ class TwitchBot(MyDatabase):
                 return_message = 'Choose a number between 0 and 1000 ya dingus'
         return return_message
 
-    def send_complement(self, message: str):
-        """
-        Say a nice thing to chat ~1% of the time
-        :param message: IRC formatted message
-        """
-        if random.randint(0, 100) == 1:
-            user = get_user(message)
-            complement_index = random.randint(0, len(self.complements) - 1)
-            complement = self.complements[complement_index].format(user)
-            self.messaging.send_message(complement)
 
     def send_time(self, *args):
         """
@@ -306,12 +301,6 @@ class TwitchBot(MyDatabase):
             f'Remember, my followers are objectively better than other people.'
         )
 
-    # def rewards(self, *args):
-    #     # self.messaging.send_message('!tts <message> - 10 SpoonBucks')
-    #     self.messaging.send_message('!wordcount <username> <word or regular expression> - 10 SpoonBucks, '
-    #                       '!breakaway (Attack from the gun in next race, recorded on GoPro and stream after)'
-    #                       ' - 1000 SpoonBucks')
-
     def respond_to_message(self, message: str):
         """
         Responds to keywords defined in self.comment_keywords
@@ -321,12 +310,15 @@ class TwitchBot(MyDatabase):
         """
         comment = get_comment(message)
         user = get_user(message)
+        channel = get_channel(message)
         if comment and comment in self.comment_keywords:
             if isinstance(self.comment_keywords[comment], str):
                 self.messaging.send_message(self.comment_keywords[comment])
             else:
                 self.comment_keywords[comment](message)
-        elif re.search('sprint', comment, flags=re.IGNORECASE) and random.randint(0, 100) < 20:
+        elif re.search('sprint', comment, flags=re.IGNORECASE) \
+                and random.randint(0, 100) < 20\
+                and channel != user:
             self.messaging.send_message(f'@{user} shutup nerd')
             self.sounds.send_sound('shutup.mp3')
 
@@ -446,9 +438,7 @@ class ActiveUserProcess(MyDatabase):
         self.nick = config.nick
         self.channel = config.channel
         self.sounds = Sounds(self.base_path)
-        self.messaging = Messaging(
-            channel=self.channel, server=self.server, nick=self.nick, port=self.port, token=self.token
-        )
+        self.messaging = Messaging(config=config)
         self.tb = None
         self.main()
 
