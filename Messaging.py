@@ -71,8 +71,8 @@ class Messaging:
         try:
             self.sock.send(f'PRIVMSG #{self.channel} :{comment}\n'.encode('utf-8'))
         except ConnectionAbortedError or ConnectionResetError as e:
-            time.sleep(.1)
-            logger.error(f'{e}')
+            time.sleep(.3)
+            logger.error(f'{e}\n{comment}')
             self.define_sock()
             self.sock.send(f'PRIVMSG #{self.channel} :{comment}\n'.encode('utf-8'))
 

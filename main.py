@@ -11,7 +11,7 @@ from swearwords import swear_words
 import random
 from Parsers import get_channel, get_comment, get_user, count_words, Conversions
 from datetime import datetime
-from ShoutOuts import streamer_shoutouts, chat_shoutouts
+from ShoutOuts import ShoutOuts
 from Messaging import Messaging
 from RollDice import Roll
 from Compliments import Compliments
@@ -35,8 +35,7 @@ class TwitchBot(MyDatabase):
         self.messaging.define_sock()
         self.rolls = Roll()
         self.removal_options = Roll.rewards
-        self.twitch_url = 'https://twitch.tv/'
-        self.check_out = f'Check them out at {self.twitch_url}'
+        self.give_shoutout = ShoutOuts(self.messaging)
         self.sounds = Sounds(base_path)
         self.cooldowns = Cooldown()
         sound_commands = ', '.join(self.sounds)
@@ -95,7 +94,7 @@ class TwitchBot(MyDatabase):
                         and not re.match('!tts', message, flags=re.IGNORECASE):
                     print('SCRIPT: ' + __name__)
                     self.respond_to_message(message)
-                    self.give_shoutout(message)
+                    self.give_shoutout(message, self.messaging)
                     self.compliments(message)
                     self.check_sound(message)
                     self.conversions(message)
@@ -322,29 +321,6 @@ class TwitchBot(MyDatabase):
             self.messaging.send_message(f'@{user} shutup nerd')
             self.sounds.send_sound('shutup.mp3')
 
-    def give_shoutout(self, message: str):
-        """
-        Certain users frequent my chat, this gives them a shoutout with an audio cue!
-        :param message:
-        :return:
-        """
-        user = get_user(message)
-        response = ''
-        if user.lower() in streamer_shoutouts and streamer_shoutouts[user.lower()].seen_today == 0:
-            streamer = streamer_shoutouts[user.lower()]
-            streamer.seen_today = 1
-            response = f'@{user} ' + streamer.message + f' {self.check_out}{user}.'
-            if streamer.sound:
-                self.sounds.send_sound(streamer.sound)
-        elif user.lower() in chat_shoutouts and chat_shoutouts[user.lower()].seen_today == 0:
-            chatter = chat_shoutouts[user]
-            chatter.seen_today = 1
-            response = chatter.message.format(user)
-            if chatter.sound:
-                self.sounds.send_sound(chatter.sound)
-        if response:
-            self.messaging.send_message(response)
-
     def check_sound(self, message: str):
         """
         Checks chat to see if sound command was sent
@@ -357,17 +333,6 @@ class TwitchBot(MyDatabase):
             sound_filename = self.sounds[comment]
             print(f'sound filename: {sound_filename}')
             self.sounds.send_sound(sound_filename)
-
-    # def send_stats(self, message: str):
-    #     stats = self.get_channel_stats_obj(message, session=self.session)
-    #     if stats != '0':
-    #         points = stats.stat_value
-    #         send_string = f'You have {points} Spoon Bucks!'
-    #     else:
-    #         send_string = 'You have NO POINTS GET THE F*CK OUT (jk). ' \
-    #                       'But seriously you have no points, hang out in chat more and ' \
-    #                       'don\'t forget to keep your volume on.'
-    #     self.messaging.send_message(send_string)
 
     def swearjar(self, message: str):
         """
@@ -450,7 +415,7 @@ class ActiveUserProcess(MyDatabase):
         """
         update_interval = 60
         time_streamed = 0
-        intervals_for_ad = 15
+        intervals_for_ad = 11
         while True:
             session = self.get_session(self.db_engine)
             self._give_chatpoints(session=session, channel=self.channel)
@@ -484,7 +449,7 @@ class ActiveUserProcess(MyDatabase):
         Send stream info periodically
         :return:
         """
-        message = '!commands to see all the fun shit you can do. Don\'t forget to follow!'
+        message = '!commands (!convert, !tts, !sounds, !roll, ect) to see all the fun shit you can do. Don\'t forget to follow!'
         try:
             with self.messaging as _:
                 time.sleep(.1)

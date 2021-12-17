@@ -7,6 +7,9 @@ TwitchBot in main.py and TTSProcess in TTS.py.
 
 There is one "Passive" process, ActiveUserProcess in main.py.
 
+Models.py contains an object representation of the sqlite database data is persisted on.
+All queries are in Models.MyDatabase
+
 <h1><u>TwitchBot</u></h1>
 Connects to twitch IRC and reacts to certain text based commands. 
 Currently has the following features

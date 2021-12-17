@@ -43,16 +43,26 @@ def register(cls):
         raise AssertionError('roll_value must be either int or tuple of ints')
     Roll.reward_string += f'[{rolls}: {cls.reward_value} {cls.roll_reward}.]'
 
-
 def add_to_rolls(cls, roll_value):
+    """
+    Ensures roll_value is an int and registers it with Roll
+    Dissallows duplicates
+    :param cls: roll subclass
+    :param roll_value: Value to register roll class under
+    :return:
+    """
     assert isinstance(roll_value, int)
     if roll_value not in Roll.rolls:
         Roll.rolls[roll_value] = cls()
     else:
         raise AssertionError(f'Roll values must not overlap: {roll_value} is a duplicate')
 
-
 def check_for_proper_roll(roll_value):
+    """
+    Looks at rolls and rare rolls to ensure roll_value is possible
+    :param roll_value:
+    :return:
+    """
     if roll_value not in list(range(*Roll.rare_roll_range)):
         if roll_value not in list(range(*Roll.roll_range)):
             raise AssertionError(f'Out of roll range: {roll_value}')
@@ -61,6 +71,7 @@ def check_for_proper_roll(roll_value):
 class Roll(MyDatabase):
     """
     Base class to automatically register any new subclasses
+    Contains common methods for all rolls such as adding values to userstats
     """
     rolls = {}
     rewards = []
@@ -94,7 +105,7 @@ class Roll(MyDatabase):
 
     def check_roll(self, message):
         """
-
+        check chat for !roll
         :param message:
         :return:
         """
@@ -104,7 +115,7 @@ class Roll(MyDatabase):
 
     def do_roll(self, message):
         """
-
+        Checks cooldown and does roll if not on cooldown
         :param message:
         :return:
         """
@@ -128,7 +139,7 @@ class Roll(MyDatabase):
 
     def rigged_roll(self):
         """
-
+        rolls including "rare" options
         :return: int between 1 and 100 excluding the exceptions
         """
         # return 1
@@ -164,7 +175,8 @@ class Roll(MyDatabase):
                     roll_value: int,
                     roll_reward: str,
                     reward_value: int,
-                    return_message='') -> str:
+                    return_message='',
+                    sound='') -> str:
         """
         default give reward_value to roll_reward userstat
         :param message:
@@ -182,14 +194,18 @@ class Roll(MyDatabase):
             return_message = f'@{user} You\'ve rolled a {roll_value}! ' \
                              f'Spoon owes an additional {reward_value} {roll_reward} ' \
                              f'for a total of {owed}'
+        if not sound:
+            self.sounds.send_sound('shit.mp3')
+        else:
+            self.sounds.send_sound(sound)
         return return_message
 
 
-class roll_1_2(Roll):
+class roll_1_2_3_4(Roll):
     """
     call to add 1 pullup to channel owner user stats
     """
-    roll_value = (1, 2)
+    roll_value = (1, 2, 3, 4)
     roll_reward = 'pullups'
     reward_value = 1
     numerical = True
@@ -198,6 +214,12 @@ class roll_1_2(Roll):
         super().__init__()
 
     def __call__(self, message: str, roll: int)->str:
+        """
+        add pullups to channel owner
+        :param message:
+        :param roll:
+        :return:
+        """
         return self.give_reward(message, roll, self.roll_reward, roll)
 
 
@@ -205,7 +227,7 @@ class roll_5_6(Roll):
     """
     call to add 5 pushups to channel owner user stats
     """
-    roll_value = (5, 6)
+    roll_value = (5, 6, 7, 8)
     roll_reward = 'pushups'
     reward_value = 5
     numerical = True
@@ -214,6 +236,12 @@ class roll_5_6(Roll):
         super().__init__()
 
     def __call__(self, message: str, roll: int)->str:
+        """
+        add pushups to channel owner
+        :param message:
+        :param roll:
+        :return:
+        """
         return self.give_reward(message, roll, self.roll_reward, roll)
 
 
@@ -230,6 +258,12 @@ class roll_69(Roll):
         super().__init__()
 
     def __call__(self, message:str, roll: int) -> str:
+        """
+        Call to turn to chat emoji mode
+        :param message:
+        :param roll:
+        :return:
+        """
         user = get_comment(message)
         return_string = f'@{user} You got a rare roll, {roll}! ' \
                         f'Emoji only mode for {self.reward_value}'
@@ -238,6 +272,10 @@ class roll_69(Roll):
         return return_string
 
     def return_to_normal(self):
+        """
+        call to return back to normal mode
+        :return:
+        """
         minutes = re.search('\d', self.reward_value)[0]
         time.sleep(minutes*60)
         self.messaging.send_message('BACK TO NORMAL!')
@@ -257,8 +295,13 @@ class roll_48_49(Roll):
         super().__init__()
 
     def __call__(self, message: str, roll: int)->str:
-        self.sounds.send_sound('pocket_rocket.mp3')
-        return self.give_reward(message, roll, self.roll_reward, self.reward_value)
+        """
+        call to add 1 sprint to channel
+        :param message:
+        :param roll:
+        :return:
+        """
+        return self.give_reward(message, roll, self.roll_reward, self.reward_value, sound='pocket_rocket.mp3')
 
 
 class roll_25_50(Roll):
@@ -274,6 +317,12 @@ class roll_25_50(Roll):
         super().__init__()
 
     def __call__(self, message: str, roll: int)->str:
+        """
+        call to timeout a user
+        :param message:
+        :param roll:
+        :return:
+        """
         user = get_user(message)
         self.messaging.send_message(f'/timeout @{user} {roll}')
         return_message = f'@{user} YOU\'VE WON A {roll} SECOND TIMEOUT!'
@@ -284,7 +333,7 @@ class roll_10_11_12_13_14(Roll):
     """
     Call to send HYDRATE message and sound
     """
-    roll_value = (10,11,12,13,14)
+    roll_value = (10, 11, 12, 13, 14)
     roll_reward = 'Hydrate'
     reward_value = 'GULP'
     numerical = False
@@ -293,6 +342,12 @@ class roll_10_11_12_13_14(Roll):
         super().__init__()
 
     def __call__(self, message: str, roll: int)->str:
+        """
+        HYDRATE
+        :param message:
+        :param roll:
+        :return:
+        """
         user = get_user(message)
         self.sounds.send_sound('drink.mp3')
         return_message = f'@{user} You rolled {roll}! HYDRATE'
@@ -301,7 +356,7 @@ class roll_10_11_12_13_14(Roll):
 
 class roll_20_21_22_23_24(Roll):
     """
-
+    I will yell 1 word
     """
     roll_value = (20, 21, 22, 23, 24)
     roll_reward = 'Yell'
@@ -317,6 +372,7 @@ class roll_20_21_22_23_24(Roll):
                          f'Say in chat desired word (no tos words).'
         self.sounds.send_sound('loud_noises.mp3')
         return return_message
+
 
 class roll_30_31_32(Roll):
     roll_value = (30, 31, 32)
@@ -337,7 +393,6 @@ class roll_30_31_32(Roll):
     def change_back(self, message, roll) -> str:
         user = get_user(message)
         if not self.thread:
-            print('isnone')
             self.thread = Thread(target=self.sleep_then_change,
                                  kwargs={'message': message, 'state_value': '1'})
             print(self.thread)
@@ -381,6 +436,7 @@ class roll_30_31_32(Roll):
         state_obj.state_value = state_value
         self.commit(session)
         session.close()
+
 
 if __name__ == '__main__':
     """

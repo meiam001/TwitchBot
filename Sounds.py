@@ -4,6 +4,7 @@ from multiprocessing import Process
 path_to_vlc = r'C:\Program Files\VideoLAN\VLC\vlc.exe'
 
 class Sounds:
+    default_sound = ''
 
     def __init__(self, base_path: str):
         """

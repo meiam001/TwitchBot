@@ -1,15 +1,53 @@
-from dataclasses import dataclass
+from Parsers import get_user
+from Sounds import Sounds
+from Messaging import Messaging
 
-
-@dataclass
 class ShoutOuts:
-    message: str
-    seen_today: int = 0
-    sound: str = 'defaultshoutout.mp3'
+
+    def __init__(self, message, sound='defaultshoutout.mp3'):
+        self.message = message
+        self.sounds = Sounds(base_path='.')
+        twitch_url = 'https://twitch.tv/'
+        self.check_out = f'Check them out at {twitch_url}'
+        self.sound = sound
+        self.seen_today = 0
+
+    def __call__(self, message: str, messaging: Messaging):
+        """
+        Certain users frequent my chat, this gives them a shoutout with an audio cue!
+        :param message:
+        :return:
+        """
+        user = get_user(message)
+        response = ''
+        if user.lower() in streamer_shoutouts and streamer_shoutouts[user.lower()].seen_today == 0:
+            streamer: ShoutOuts = streamer_shoutouts[user.lower()]
+            streamer.seen_today = 1
+            response = f'@{user} ' + streamer.message + f' {self.check_out}{user}.'
+            if streamer.sound:
+                self.sounds.send_sound(streamer.sound)
+        elif user.lower() in chat_shoutouts and chat_shoutouts[user.lower()].seen_today == 0:
+            chatter: ShoutOuts = chat_shoutouts[user]
+            chatter.seen_today = 1
+            response = chatter.message.format(user)
+            if chatter.sound:
+                self.sounds.send_sound(chatter.sound)
+        if response:
+            messaging.send_message(response)
 
 
 streamer_shoutouts = {
-    'beatsgameslife': ShoutOuts('Dude gets fitter every time he streams!'),
+    'wattswheelhouse':
+        ShoutOuts('If you want to see a real sprinter here\'s your man!',
+                  sound='ekeseplosion.mp3'),
+    'ToastedJoost':
+        ShoutOuts('A living sex symbol!'),
+    'ouranhshc':
+        ShoutOuts('It\'s ya boy!'),
+    'K3ndizle'.lower():
+        ShoutOuts('Some say he\'s the biggest BBC in all of cycling!'),
+    'beatsgameslife':
+        ShoutOuts('Dude gets fitter every time he streams!'),
     'DaveGarge'.lower():
         ShoutOuts('Cyclist with a cause, helping underserved communities get on the saddle!',
                   sound='trousers.mp3'),
@@ -69,9 +107,9 @@ streamer_shoutouts = {
                   sound='kyo.mp3'),
     'debbieinshape':
         ShoutOuts('The beauty of the bike!',
-                  sound='heygirl.mp3')
+                  sound='heygirl.mp3'),
     # 'slowspoon':
-    #     ShoutOuts('smoke.mp3', sound='smoke.mp3')
+    #     ShoutOuts('oh lol!', sound='smoke.mp3')
 }
 
 chat_shoutouts = {
