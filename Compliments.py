@@ -1,6 +1,5 @@
 import random
-from Parsers import get_user, get_channel
-from Messaging import Messaging
+from Messaging import Messaging, Message
 from setup import Config
 import requests
 from threading import Thread
@@ -33,27 +32,27 @@ class Compliments(MyDatabase):
         self.messaging = messaging
         self.reset_state()
 
-    def __call__(self, message):
+    def __call__(self, message: Message):
         """
         Call to randomly send compliment
         :param message:
         :return:
         """
-        user = get_user(message)
-        channel = get_channel(message)
+        user = message.user
+        channel = message.channel
         if user != channel:
             if self.sending_compliments():
                 Thread(target=self.send_compliment, kwargs={'message': message}).start()
             else:
                 Thread(target=self.send_insult, kwargs={'message': message}).start()
 
-    def send_compliment(self, message: str):
+    def send_compliment(self, message: Message):
         """
         Say a nice thing to chat ~1% of the time
         :param message: IRC formatted message
         """
         if random.randint(0, 100) == 1:
-            user = get_user(message)
+            user = message.user
             compliment = self.get_compliment(user)
             self.messaging.send_message(compliment)
 
@@ -68,14 +67,14 @@ class Compliments(MyDatabase):
             return True
         return False
 
-    def send_insult(self, message: str):
+    def send_insult(self, message: Message):
         """
         Say a mean thing to chat ~20% of the time
         :param message:
         :return:
         """
         if random.randint(0, 100) <= 20:
-            user = get_user(message)
+            user = message.user
             insult = self.get_insult()
             insult = f'@{user} {insult}'
             self.messaging.send_message(insult)

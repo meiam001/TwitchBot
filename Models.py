@@ -3,11 +3,11 @@ from sqlalchemy.orm import Session
 from sqlalchemy.ext.declarative import declarative_base
 import datetime
 from sqlalchemy.sql import func, desc
-from Parsers import get_channel, get_user, get_comment
 import os
 import log
 from setup import Config
 import time
+from Messaging import Message
 Base = declarative_base()
 
 config = Config()
@@ -173,15 +173,15 @@ class MyDatabase(ConnectDB):
             print("Error occurred during Table creation!")
             print(e)
 
-    def write_message(self, message: str, session) -> str:
+    def write_message(self, message: Message, session) -> str:
         """
         Writes user message to database
         :param message:
         :return:
         """
-        user = get_user(message)
-        comment = get_comment(message)
-        channel = get_channel(message)
+        user = message.user
+        comment = message.comment
+        channel = message.channel
         user_obj = session.query(Users).where(Users.user==user).first()
         channel_obj = session.query(Channels).where(Channels.channel==channel).first()
         if user_obj:
@@ -202,12 +202,12 @@ class MyDatabase(ConnectDB):
         session.add(comment_obj)
         self.commit(session)
 
-    def get_channel_owed(self, session, message: str, stat: str) -> UserStats:
+    def get_channel_owed(self, session, message: Message, stat: str) -> UserStats:
         """
         Get UserStats object with the label "stat"
         :param stat: string label for type of stat
         """
-        channel = get_channel(message)
+        channel = message.channel
         user_obj = self.get_user_obj(channel,session)
         stats_obj = self.get_stats_obj(user_obj, channel, stat, session)
         return stats_obj
@@ -275,7 +275,7 @@ class MyDatabase(ConnectDB):
         if folder_name not in os.listdir(path):
             os.mkdir(f'{path}\\{folder_name}')
 
-    def get_gcd(self, message, session, gcd=0) -> Cooldowns:
+    def get_gcd(self, message: Message, session, gcd=0) -> Cooldowns:
         """
         gets global cooldown object
         :param message:
@@ -283,7 +283,7 @@ class MyDatabase(ConnectDB):
         :param gcd: global cooldown in seconds
         :return:
         """
-        channel = get_channel(message)
+        channel = message.channel
         cooldown_object = session.query(Cooldowns)\
             .join(Channels, Channels.channel_id == Cooldowns.channel_id) \
             .where(Channels.channel == channel)\
@@ -293,7 +293,7 @@ class MyDatabase(ConnectDB):
             cooldown_object = self.insert_cooldown(message, session, gcd, 'Global')
         return cooldown_object
 
-    def get_channel_stats_obj(self, message, session, stat='channel_points') -> UserStats:
+    def get_channel_stats_obj(self, message: Message, session, stat='channel_points') -> UserStats:
         """
         get channel_points UserStats object
         :param message:
@@ -301,9 +301,9 @@ class MyDatabase(ConnectDB):
         :param stat:
         :return:
         """
-        channel=get_channel(message)
+        channel= message.channel
         user_id = session.query(Users)\
-            .where(Users.user==get_user(message))\
+            .where(Users.user==message.user)\
                 .first().user_id
         channel_id = session.query(Channels)\
             .where(Channels.channel==channel)\
@@ -323,7 +323,7 @@ class MyDatabase(ConnectDB):
             .where(UserStats.stat==stat)\
             .where(UserStats.channel_id==channel_id).first()
 
-    def get_cooldown_obj(self, message, cd_type, session, cd_length=180) -> Cooldowns:
+    def get_cooldown_obj(self, message: Message, cd_type, session, cd_length=180) -> Cooldowns:
         """
         Gets cooldown object
         :param message:
@@ -332,7 +332,7 @@ class MyDatabase(ConnectDB):
         :param cd_length:
         :return:
         """
-        user = get_user(message)
+        user = message.user
         user_obj = self.get_user_obj(user, session)
         cooldown_obj = session.query(Cooldowns)\
             .where(Cooldowns.user_id==user_obj.user_id).where(Cooldowns.cd_type==cd_type).first()
@@ -342,7 +342,7 @@ class MyDatabase(ConnectDB):
             )
         return cooldown_obj
 
-    def insert_cooldown(self, message: str, session, cd_length, cd_type, user_id=None) -> Cooldowns:
+    def insert_cooldown(self, message: Message, session, cd_length, cd_type, user_id=None) -> Cooldowns:
         """
         inserts new cooldown type
         :param message:
@@ -352,7 +352,7 @@ class MyDatabase(ConnectDB):
         :param user_id:
         :return:
         """
-        channel = get_channel(message)
+        channel = message.channel
         channel = self.get_channel_obj(channel, session)
         cooldown_object = Cooldowns(channel_id=channel.channel_id,
                                     user_id=user_id,
@@ -363,7 +363,7 @@ class MyDatabase(ConnectDB):
         self.commit(session)
         return cooldown_object
 
-    def update_gcd(self, current_time, session, message, length=10):
+    def update_gcd(self, current_time, session, message: Message, length=10):
         """
         Updates global cooldown
         :param current_time:
@@ -419,7 +419,7 @@ class MyDatabase(ConnectDB):
             )
         return stats_obj
 
-    def add_channel_owed(self, message: str, stat: str, to_add: int, session, default=1) -> int:
+    def add_channel_owed(self, message: Message, stat: str, to_add: int, session, default=1) -> int:
         """
         If channel offers rewards to user this adds to_add to it
         :param message:

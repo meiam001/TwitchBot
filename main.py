@@ -9,10 +9,10 @@ import time
 from multiprocessing import Process
 from swearwords import swear_words
 import random
-from Parsers import get_channel, get_comment, get_user, count_words, Conversions
+from Parsers import count_words, Conversions
 from datetime import datetime
 from ShoutOuts import ShoutOuts
-from Messaging import Messaging
+from Messaging import Messaging, Message
 from RollDice import Roll
 from Compliments import Compliments
 from TTS import Cooldown, TTSProcess
@@ -91,8 +91,7 @@ class TwitchBot(MyDatabase):
             if message:
                 self.save_chat(message)
                 if self.my_chat and not self.timeout_spam(message) \
-                        and not re.match('!tts', message, flags=re.IGNORECASE):
-                    print('SCRIPT: ' + __name__)
+                        and not re.match('!tts', message.comment, flags=re.IGNORECASE):
                     self.respond_to_message(message)
                     self.give_shoutout(message, self.messaging)
                     self.compliments(message)
@@ -102,18 +101,18 @@ class TwitchBot(MyDatabase):
                     self.check_remove_channel_owed(message)
                     self.check_owed(message)
 
-    def check_owed(self, message):
+    def check_owed(self, message: Message):
         """
         Check what streamer owes chat
         :param message:
         :return:
         """
         stat_objects = []
-        comment = get_comment(message)
+        comment = message.comment
         if re.match('!owed$', comment, flags=re.IGNORECASE):
             owed_string = ''
             session = self.get_session(self.db_engine)
-            channel = get_channel(message)
+            channel = message.channel
             user_obj = self.get_user_obj(channel, session)
             for stat in self.rolls.numerical_rewards:
                 stat_obj = self.get_stats_obj(user_obj, channel, stat, session)
@@ -123,7 +122,7 @@ class TwitchBot(MyDatabase):
             self.messaging.send_message(owed_string)
 
 
-    def check_remove_channel_owed(self, message):
+    def check_remove_channel_owed(self, message: Message):
         """
         Users can roll the dice for certain rewards
         If reward is fulfilled, use this command to remove
@@ -134,10 +133,10 @@ class TwitchBot(MyDatabase):
         :param message:
         :return:
         """
-        comment = get_comment(message)
+        comment = message.comment
         if re.match('!remove', comment, flags=re.IGNORECASE):
-            user = get_user(message).lower()
-            channel = get_channel(message).lower()
+            user = message.user
+            channel = message.channel.lower()
             if user == channel:
                 comment_args = comment.split(' ')
                 if len(comment_args) == 3:
@@ -162,17 +161,17 @@ class TwitchBot(MyDatabase):
                 self.messaging.send_message(f'/timeout @{user} 30')
 
 
-    def timeout_spam(self, message: str) -> bool:
+    def timeout_spam(self, message: Message) -> bool:
         """
         bigfollows is commonly bot spammed,
         automatically timeout any user who uses it in their comment
         :param message:
         :return:
         """
-        comment = get_comment(message)
+        comment = message.comment
         timeout_len = 60
         if self.check_spam(comment):
-            user = get_user(message)
+            user = message.user
             print('bigfollow thingy')
             self.messaging.send_message(f'/timeout {user} {timeout_len}')
             return True
@@ -195,15 +194,15 @@ class TwitchBot(MyDatabase):
             return True
         return False
 
-    def conversions(self, message: str) -> None:
+    def conversions(self, message: Message) -> None:
         """
         processes messages and converts units for chat (f/c/kg/pounds)
         :param message:
         """
-        comment = get_comment(message)
+        comment = message.comment
         keyword = '!convert'
         if comment.startswith(keyword):
-            user = get_user(message)
+            user = message.user
             if self.proper_conversion_comment(comment):
                 conversion = Conversions(comment)
                 if conversion:
@@ -293,23 +292,23 @@ class TwitchBot(MyDatabase):
         :param args:
         :return:
         """
-        message = args[0]
-        user = get_user(message)
+        message: Message = args[0]
+        user = message.user
         self.messaging.send_message(
             f'Thanks for stopping by @{user}! '
             f'Remember, my followers are objectively better than other people.'
         )
 
-    def respond_to_message(self, message: str):
+    def respond_to_message(self, message: Message):
         """
         Responds to keywords defined in self.comment_keywords
         And to SPRINT
         :param message:
         :return:
         """
-        comment = get_comment(message)
-        user = get_user(message)
-        channel = get_channel(message)
+        comment = message.comment
+        user = message.user
+        channel = message.channel
         if comment and comment in self.comment_keywords:
             if isinstance(self.comment_keywords[comment], str):
                 self.messaging.send_message(self.comment_keywords[comment])
@@ -321,27 +320,27 @@ class TwitchBot(MyDatabase):
             self.messaging.send_message(f'@{user} shutup nerd')
             self.sounds.send_sound('shutup.mp3')
 
-    def check_sound(self, message: str):
+    def check_sound(self, message: Message):
         """
         Checks chat to see if sound command was sent
         Sends it if so
         :param message:
         :return:
         """
-        comment = get_comment(message)
+        comment = message.comment
         if comment in self.sounds:
             sound_filename = self.sounds[comment]
             print(f'sound filename: {sound_filename}')
             self.sounds.send_sound(sound_filename)
 
-    def swearjar(self, message: str):
+    def swearjar(self, message: Message):
         """
         Lets a user know how many times they've sworn and the ratio of swearwords/total messages
         :param message:
         :return:
         """
         session = self.get_session(self.db_engine)
-        user = get_user(message)
+        user = message.message
         channel = config.channel
         comment_list = self.get_users_comments(user=user, channel=channel, session=session)
         times_sworn = count_words(comment_list, swear_words)
@@ -352,14 +351,14 @@ class TwitchBot(MyDatabase):
                                     f' Your ratio of swear words to total comments is {swear_ratio}')
         session.close()
 
-    def chatty_boi(self, message: str):
+    def chatty_boi(self, message: Message):
         """
         Lets users know who's sent the most messages
         Currently tells of top 3
         :param message:
         :return:
         """
-        channel = get_channel(message)
+        channel = message.channel
         session = self.get_session(self.db_engine)
         top_commenters = self.get_top_commenters(session=session, limit=3, channel=channel)
         number1 = top_commenters[0]
@@ -370,7 +369,7 @@ class TwitchBot(MyDatabase):
                                     f' #3: @{number3.user} with {number3[1]}')
         session.close()
 
-    def save_chat(self, message: str):
+    def save_chat(self, message: Message):
         """
         Save user chat messages to database defined in __init__
         :param message:
@@ -449,12 +448,12 @@ class ActiveUserProcess(MyDatabase):
         Send stream info periodically
         :return:
         """
-        message = '!commands (!convert, !tts, !sounds, !roll, ect) to see all the fun shit you can do. Don\'t forget to follow!'
+        ad = '!commands (!convert, !tts, !sounds, !roll, ect) to see all the fun shit you can do. Don\'t forget to follow!'
         try:
             with self.messaging as _:
                 time.sleep(.1)
                 self.sounds.send_sound('follow.mp3')
-                self.messaging.send_message(message)
+                self.messaging.send_message(ad)
         except Exception as e:
             logger.error(f'{e}')
             traceback.print_exc()

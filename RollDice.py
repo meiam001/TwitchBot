@@ -1,8 +1,7 @@
 import re
-from Parsers import get_comment, get_user, get_channel
 from Models import MyDatabase
 from Sounds import Sounds
-from Messaging import Messaging
+from Messaging import Messaging, Message
 import time
 from setup import Config
 import random
@@ -103,24 +102,24 @@ class Roll(MyDatabase):
         super().__init_subclass__(**kwargs)
         register(cls)
 
-    def check_roll(self, message):
+    def check_roll(self, message: Message):
         """
         check chat for !roll
         :param message:
         :return:
         """
-        comment = get_comment(message)
+        comment = message.comment
         if re.match('!roll$', comment, flags=re.IGNORECASE):
             Thread(target=self.do_roll, kwargs={'message': message}).start()
 
-    def do_roll(self, message):
+    def do_roll(self, message: Message):
         """
         Checks cooldown and does roll if not on cooldown
         :param message:
         :return:
         """
         session = self.get_session(self.db_engine)
-        user = get_user(message)
+        user = message.user
         current_time = time.time()
         cooldown_obj = self.get_cooldown_obj(
             message=message, cd_type=self.cd_type, cd_length=self.user_cd, session=session
@@ -153,7 +152,7 @@ class Roll(MyDatabase):
         roll_result = random.randint(*self.roll_range)
         return roll_result
 
-    def determine_roll_reward(self, roll: int, message: str) -> str:
+    def determine_roll_reward(self, roll: int, message: Message) -> str:
         """
         When user uses !roll, this grabs associated function and calls it
         If no reward for number rolled, returns string to inform user
@@ -165,13 +164,13 @@ class Roll(MyDatabase):
         if return_func:
             roll_response = return_func(message, roll)
         else:
-            user = get_user(message)
+            user = message.user
             roll_response = f'@{user} You rolled {roll}! YOU WIN NOTHING (!rollrewards for potential rewards)'
             self.sounds.send_sound('sad.mp3')
         return roll_response
 
     def give_reward(self,
-                    message: str,
+                    message: Message,
                     roll_value: int,
                     roll_reward: str,
                     reward_value: int,
@@ -189,7 +188,7 @@ class Roll(MyDatabase):
         session = self.get_session(self.db_engine)
         owed = self.add_channel_owed(message, roll_reward, reward_value, session)
         session.close()
-        user = get_user(message)
+        user = message.user
         if not return_message:
             return_message = f'@{user} You\'ve rolled a {roll_value}! ' \
                              f'Spoon owes an additional {reward_value} {roll_reward} ' \
@@ -213,7 +212,7 @@ class roll_1_2_3_4(Roll):
     def __init__(self):
         super().__init__()
 
-    def __call__(self, message: str, roll: int)->str:
+    def __call__(self, message: Message, roll: int)->str:
         """
         add pullups to channel owner
         :param message:
@@ -235,7 +234,7 @@ class roll_5_6(Roll):
     def __init__(self):
         super().__init__()
 
-    def __call__(self, message: str, roll: int)->str:
+    def __call__(self, message: Message, roll: int)->str:
         """
         add pushups to channel owner
         :param message:
@@ -257,14 +256,14 @@ class roll_69(Roll):
     def __init__(self):
         super().__init__()
 
-    def __call__(self, message:str, roll: int) -> str:
+    def __call__(self, message: Message, roll: int) -> str:
         """
         Call to turn to chat emoji mode
         :param message:
         :param roll:
         :return:
         """
-        user = get_comment(message)
+        user = message.user
         return_string = f'@{user} You got a rare roll, {roll}! ' \
                         f'Emoji only mode for {self.reward_value}'
         self.messaging.send_message('/emoteonly')
@@ -294,7 +293,7 @@ class roll_48_49(Roll):
     def __init__(self):
         super().__init__()
 
-    def __call__(self, message: str, roll: int)->str:
+    def __call__(self, message: Message, roll: int)->str:
         """
         call to add 1 sprint to channel
         :param message:
@@ -316,14 +315,14 @@ class roll_25_50(Roll):
     def __init__(self):
         super().__init__()
 
-    def __call__(self, message: str, roll: int)->str:
+    def __call__(self, message: Message, roll: int)->str:
         """
         call to timeout a user
         :param message:
         :param roll:
         :return:
         """
-        user = get_user(message)
+        user = message.user
         self.messaging.send_message(f'/timeout @{user} {roll}')
         return_message = f'@{user} YOU\'VE WON A {roll} SECOND TIMEOUT!'
         return return_message
@@ -341,14 +340,14 @@ class roll_10_11_12_13_14(Roll):
     def __init__(self):
         super().__init__()
 
-    def __call__(self, message: str, roll: int)->str:
+    def __call__(self, message: Message, roll: int)->str:
         """
         HYDRATE
         :param message:
         :param roll:
         :return:
         """
-        user = get_user(message)
+        user = message.user
         self.sounds.send_sound('drink.mp3')
         return_message = f'@{user} You rolled {roll}! HYDRATE'
         return return_message
@@ -366,8 +365,8 @@ class roll_20_21_22_23_24(Roll):
     def __init__(self):
         super().__init__()
 
-    def __call__(self, message: str, roll: int) -> str:
-        user = get_user(message)
+    def __call__(self, message: Message, roll: int) -> str:
+        user = message.user
         return_message = f'@{user} You\'ve rolled {roll} and won ONE free yell! ' \
                          f'Say in chat desired word (no tos words).'
         self.sounds.send_sound('loud_noises.mp3')
@@ -385,13 +384,13 @@ class roll_30_31_32(Roll):
         super().__init__()
         self.thread: Thread = None
 
-    def __call__(self, message: str, roll: int) -> str:
+    def __call__(self, message: Message, roll: int) -> str:
         self.change_compliment_state(message, '0')
         return_message = self.change_back(message, roll)
         return return_message
 
-    def change_back(self, message, roll) -> str:
-        user = get_user(message)
+    def change_back(self, message: Message, roll: int) -> str:
+        user = message.user
         if not self.thread:
             self.thread = Thread(target=self.sleep_then_change,
                                  kwargs={'message': message, 'state_value': '1'})
@@ -417,7 +416,7 @@ class roll_30_31_32(Roll):
             return_message = f'CONDITION I THOUGHT WAS IMPOSSIBLE MET CHECK YOUR SHIT (@{user} roll failed)'
         return return_message
 
-    def sleep_then_change(self, message, state_value):
+    def sleep_then_change(self, message: Message, state_value):
         """
 
         :param message:
@@ -428,10 +427,10 @@ class roll_30_31_32(Roll):
         self.change_compliment_state(message, state_value)
         self.messaging.send_message('Room back in compliment mode!')
 
-    def change_compliment_state(self, message: str, state_value: str):
+    def change_compliment_state(self, message: Message, state_value: str):
         session = self.get_session(self.db_engine)
         state = 'sending_compliments'
-        channel = get_channel(message)
+        channel = message.channel
         state_obj = self.get_channel_state(channel, session, state)
         state_obj.state_value = state_value
         self.commit(session)

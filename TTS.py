@@ -1,10 +1,9 @@
 from Models import MyDatabase, Cooldowns
 import pyttsx3
 from Sounds import Sounds
-from Messaging import Messaging
+from Messaging import Messaging, Message
 from setup import Config
 import threading
-from Parsers import get_comment, get_user
 import time
 import re
 import os
@@ -14,7 +13,7 @@ config = Config()
 class Cooldown:
 
     @staticmethod
-    def cooldown(gcd_cooldown_obj: Cooldowns, cooldown_obj: Cooldowns, message:str, current_time) -> str:
+    def cooldown(gcd_cooldown_obj: Cooldowns, cooldown_obj: Cooldowns, message: Message, current_time) -> str:
         """
         Deals with cooldowns easily
         :param gcd_cooldown_obj:
@@ -29,7 +28,7 @@ class Cooldown:
             if user_diff > cooldown_obj.length:
                 return ''
             else:
-                return f'@{get_user(message)} you still got ' \
+                return f'@{message.user} you still got ' \
                        f'{cooldown_obj.length - int(user_diff)} seconds before you can do that'
         else:
             return f'{gcd_cooldown_obj.length - int(global_diff)} seconds remaining before command available'
@@ -67,19 +66,19 @@ class TTSProcess(MyDatabase):
             if message:
                 self.check_tts(message)
 
-    def check_tts(self, message: str):
+    def check_tts(self, message: Message):
         """
         If user uses !tts command sends it on stream
         :param message:
         :return:
         """
-        comment = get_comment(message)
+        comment = message.comment
         if comment.startswith('!tts'):
             session = self.get_session(self.db_engine)
             print(f'tts comment: {comment}')
             cd_type = 'tts_user'
             current_time = time.time()
-            text = self.fix_tts_text(get_comment(message))
+            text = self.fix_tts_text(message.comment)
             user_cd = self.user_cd
             global_cd = self.global_cd
             gcd_obj = self.get_gcd(message, session)

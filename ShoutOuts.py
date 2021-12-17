@@ -1,35 +1,34 @@
-from Parsers import get_user
 from Sounds import Sounds
-from Messaging import Messaging
+from Messaging import Messaging, Message
 
 class ShoutOuts:
 
-    def __init__(self, message, sound='defaultshoutout.mp3'):
-        self.message = message
+    def __init__(self, shoutout_text, sound='defaultshoutout.mp3'):
+        self.shoutout_text = shoutout_text
         self.sounds = Sounds(base_path='.')
         twitch_url = 'https://twitch.tv/'
         self.check_out = f'Check them out at {twitch_url}'
         self.sound = sound
         self.seen_today = 0
 
-    def __call__(self, message: str, messaging: Messaging):
+    def __call__(self, message: Message, messaging: Messaging):
         """
         Certain users frequent my chat, this gives them a shoutout with an audio cue!
         :param message:
         :return:
         """
-        user = get_user(message)
+        user = message.user
         response = ''
         if user.lower() in streamer_shoutouts and streamer_shoutouts[user.lower()].seen_today == 0:
             streamer: ShoutOuts = streamer_shoutouts[user.lower()]
             streamer.seen_today = 1
-            response = f'@{user} ' + streamer.message + f' {self.check_out}{user}.'
+            response = f'@{user} ' + streamer.shoutout_text + f' {self.check_out}{user}.'
             if streamer.sound:
                 self.sounds.send_sound(streamer.sound)
         elif user.lower() in chat_shoutouts and chat_shoutouts[user.lower()].seen_today == 0:
             chatter: ShoutOuts = chat_shoutouts[user]
             chatter.seen_today = 1
-            response = chatter.message.format(user)
+            response = chatter.shoutout_text.format(user)
             if chatter.sound:
                 self.sounds.send_sound(chatter.sound)
         if response:
