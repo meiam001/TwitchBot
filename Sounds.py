@@ -12,18 +12,17 @@ class Sounds:
         """
         self.base_path = base_path
         self.sounds = {'!ty': 'ty.mp3',
+                       '!distracting': 'distracting.mp3',
+                       '!laid': 'laid.mp3',
                        '!9001': '9001.mp3',
                        '!vomit': 'vomit.mp3',
-                       '!shutup': 'shutup2.mp3',
                        '!shotsfired': 'shots.mp3',
                        '!stopwhining': 'stop_whining.mp3',
-                       '!kamehameha': 'kamehameha.mp3',
                        '!daddy': 'daddy.mp3',
                        '!nuclear': 'nuclear.mp3',
                        '!baka': 'baka.mp3',
                        '!nani?!': 'nani.mp3',
                        '!haha': 'haha.mp3',
-                       '!discipline': 'discipline.mp3',
                        '!egirl': 'egirl.mp3',
                        '!aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.mp3'
                        }

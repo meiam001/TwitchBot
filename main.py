@@ -16,6 +16,7 @@ from Messaging import Messaging, Message
 from RollDice import Roll
 from Compliments import Compliments
 from TTS import Cooldown, TTSProcess
+
 timestamp_regex = '\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{6}'
 path_to_vlc = r'C:\Program Files\VideoLAN\VLC\vlc.exe'
 
@@ -45,6 +46,10 @@ class TwitchBot(MyDatabase):
              '!rollrewards': Roll.reward_string,
              '!convert': '!convert <number><lb/kg/f/c/km/mi>',
              '!sounds': sound_commands,
+             '!excuses': 'Tired, been drinking too much, diet not on point, '
+                         'havent been training intervals, coming off a rest week, '
+                         'shit 5 minute power, insufficient warmup, too much caffeine, '
+                         'too little caffeine',
              '!lurk': self.lurk,
              '!chattyboi': self.chatty_boi,
         }
@@ -53,10 +58,6 @@ class TwitchBot(MyDatabase):
         self.compliments = Compliments(self.messaging)
         self.sock = self.messaging.sock
         self.channel_obj = None
-        if config.channel == 'slowspoon':
-            self.my_chat = 1
-        else:
-            self.my_chat = 0
         session = self.get_session(self.db_engine)
         self.check_for_channel(session)
         for user in session.query(ActiveUsers):
@@ -90,7 +91,7 @@ class TwitchBot(MyDatabase):
             message = self.messaging.read_chat()
             if message:
                 self.save_chat(message)
-                if self.my_chat and not self.timeout_spam(message) \
+                if not self.timeout_spam(message) \
                         and not re.match('!tts', message.comment, flags=re.IGNORECASE):
                     self.respond_to_message(message)
                     self.give_shoutout(message, self.messaging)
@@ -339,17 +340,20 @@ class TwitchBot(MyDatabase):
         :param message:
         :return:
         """
-        session = self.get_session(self.db_engine)
-        user = message.message
-        channel = config.channel
-        comment_list = self.get_users_comments(user=user, channel=channel, session=session)
-        times_sworn = count_words(comment_list, swear_words)
-        swear_ratio = str(times_sworn / len(comment_list))
-        if len(swear_ratio) >= 4:
-            swear_ratio = swear_ratio[:4]
-        self.messaging.send_message(f'You have sworn {times_sworn} times.'
-                                    f' Your ratio of swear words to total comments is {swear_ratio}')
-        session.close()
+        try:
+            session = self.get_session(self.db_engine)
+            user = message.user
+            channel = config.channel
+            comment_list = self.get_users_comments(user=user, channel=channel, session=session)
+            times_sworn = count_words(comment_list, swear_words)
+            swear_ratio = str(times_sworn / len(comment_list))
+            if len(swear_ratio) >= 4:
+                swear_ratio = swear_ratio[:4]
+            self.messaging.send_message(f'You have sworn {times_sworn} times.'
+                                        f' Your ratio of swear words to total comments is {swear_ratio}')
+            session.close()
+        except:
+            traceback.print_exc()
 
     def chatty_boi(self, message: Message):
         """
@@ -382,7 +386,7 @@ class TwitchBot(MyDatabase):
             if session:
                 session.close()
             return_comment = ''
-        if self.my_chat and return_comment:
+        if return_comment:
             self.messaging.send_message(return_comment)
             self.sounds.send_sound('cheering.mp3')
 
@@ -448,7 +452,8 @@ class ActiveUserProcess(MyDatabase):
         Send stream info periodically
         :return:
         """
-        ad = '!commands (!convert, !tts, !sounds, !roll, ect) to see all the fun shit you can do. Don\'t forget to follow!'
+        ad = 'If you want to race RGT with me check out https://rgtdb.com/events/127670!' \
+             ' Race is on Tuesday! Don\'t forget to follow!'
         try:
             with self.messaging as _:
                 time.sleep(.1)

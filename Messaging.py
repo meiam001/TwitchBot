@@ -4,11 +4,36 @@ import traceback
 import time
 import re
 import threading
+from setup import Config
+
+config = Config()
+
 logger = log.logging.getLogger(__name__)
+
+
+def _connect(server: str, token: str, nick: str, channel: str, port: str) -> socket.socket:
+    """
+    :return:
+    """
+    sock = socket.socket()
+    sock.connect((server, port))
+    sock.send(f"PASS {token}\r\n".encode('utf-8'))
+    sock.send(f"NICK {nick}\r\n".encode('utf-8'))
+    sock.send(f"JOIN #{channel}\r\n".encode('utf-8'))
+    return sock
+
 
 class Message:
 
+    """
+    Parses and stores IRC message data sent in twitch chat
+    """
+
     def __init__(self, resp):
+        """
+        takes in raw IRC response, parses, and stores relavant data
+        :param resp:
+        """
         self.resp = resp
         self.message = self.parse_message(resp)
         self.comment = self.get_comment(self.message)
@@ -17,12 +42,16 @@ class Message:
         self.is_valid_comment = self.is_valid_comment(self.message)
 
     def __bool__(self):
+        """
+
+        :return:
+        """
         return bool(self.message)
 
     @staticmethod
     def parse_message(resp: str) -> str:
         """
-
+        Parses responses into more easily parsed messages
         :param resp:
         :return:
         """
@@ -95,6 +124,7 @@ class Message:
 
 class Messaging:
     failed = ':tmi.twitch.tv NOTICE * :Login unsuccessful'
+    # sock: socket.socket
 
     def __init__(self, config):
         self.server = config.server
@@ -117,8 +147,8 @@ class Messaging:
         sock.send(f"JOIN #{channel}\r\n".encode('utf-8'))
         return sock
 
-    def read_chat(self, name='') -> Message:
-        retry_time = 5
+    def read_chat(self) -> Message:
+        retry_time = 2
         try:
             resp = self.sock.recv(2048).decode('utf-8')
             if resp.startswith('PING'):
@@ -135,6 +165,7 @@ class Messaging:
             time.sleep(retry_time)
             self.define_sock()
 
+    # @classmethod
     def define_sock(self):
         print('Connecting to socket...')
         self.sock = self._connect(

@@ -18,5 +18,10 @@ class Config:
                 setattr(self, attr, value)
         self.port = int(self.port)
 
+
+def set_defaults(channel):
+    pass
+
+
 if __name__ == '__main__':
     x = Config()

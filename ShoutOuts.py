@@ -36,10 +36,22 @@ class ShoutOuts:
 
 
 streamer_shoutouts = {
+    'BrianKellison'.lower():
+        ShoutOuts('He might be ugly but at least he\'s short!'),
+    'DJLemma'.lower():
+        ShoutOuts('Hes from NYC but we don\'t hold that against him!'),
+    'GrubbyAlien'.lower():
+        ShoutOuts('Fuckin hate this guy but I guess he\'s entertaining.'),
+    'AlanLowe'.lower():
+        ShoutOuts('From Canyon Esports!'),
+    'ewan_mackie':
+        ShoutOuts('Giraffe'),
+    'Andrade_ZWIFTing'.lower():
+        ShoutOuts('Ya boy with fuck cancer and the best pain face in the game!'),
     'wattswheelhouse':
         ShoutOuts('If you want to see a real sprinter here\'s your man!',
                   sound='ekeseplosion.mp3'),
-    'ToastedJoost':
+    'ToastedJoost'.lower():
         ShoutOuts('A living sex symbol!'),
     'ouranhshc':
         ShoutOuts('It\'s ya boy!'),
@@ -57,7 +69,7 @@ streamer_shoutouts = {
         ShoutOuts('I once saw this man casually chat while doing a 33 minute alpe.',
                   sound='droctagonapus.mp3'),
     'LepageMaster'.lower():
-        ShoutOuts('This man is bigger than a barge, the real Gaston.',
+        ShoutOuts('Hillbilly extrordinare!',
                   sound='policeprincess.mp3'),
     'hardclaws':
         ShoutOuts('Fuck this guy and his silly accent and 1600 watt sprint.',

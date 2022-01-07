@@ -80,7 +80,9 @@ class Roll(MyDatabase):
     cd_type = 'roll_user'
     roll_range = (1, 50)
     rare_roll_range = (0, 100)
-    rare_wins = [69]
+    mega_rare_roll_range = (0, 1000)
+    rare_wins = (69, )
+    mega_rare_wins = ()
 
     def __init__(self, base_path='.', dbtype='sqlite'):
         """
@@ -146,9 +148,12 @@ class Roll(MyDatabase):
         # possible_rolls = list(range(20,26))
         # return possible_rolls[random.randint(0,len(possible_rolls)-1)]
         # ^ for testing
-        rare_roll = random.randint(*self.rare_roll_range)
-        if rare_roll in self.rare_wins:
-            return rare_roll
+        # mega_rare_roll = random.randint(*self.mega_rare_roll_range)
+        # if mega_rare_roll in self.mega_rare_wins:
+        #     return mega_rare_roll
+        # rare_roll = random.randint(*self.rare_roll_range)
+        # if rare_roll in self.rare_wins:
+        #     return rare_roll
         roll_result = random.randint(*self.roll_range)
         return roll_result
 
@@ -243,42 +248,45 @@ class roll_5_6(Roll):
         """
         return self.give_reward(message, roll, self.roll_reward, roll)
 
-
-class roll_69(Roll):
-    """
-    Not implimented
-    """
-    roll_value = 69
-    roll_reward = 'of emoji only mode'
-    reward_value = '3 minutes'
-    numerical = False
-
-    def __init__(self):
-        super().__init__()
-
-    def __call__(self, message: Message, roll: int) -> str:
-        """
-        Call to turn to chat emoji mode
-        :param message:
-        :param roll:
-        :return:
-        """
-        user = message.user
-        return_string = f'@{user} You got a rare roll, {roll}! ' \
-                        f'Emoji only mode for {self.reward_value}'
-        self.messaging.send_message('/emoteonly')
-        Thread(target=self.return_to_normal).start()
-        return return_string
-
-    def return_to_normal(self):
-        """
-        call to return back to normal mode
-        :return:
-        """
-        minutes = re.search('\d', self.reward_value)[0]
-        time.sleep(minutes*60)
-        self.messaging.send_message('BACK TO NORMAL!')
-        self.messaging.send_message('/emoteonlyoff')
+#
+# class roll_69(Roll):
+#     """
+#     Not implimented
+#     """
+#     roll_value = 69
+#     roll_reward = 'of emoji only mode'
+#     reward_value = '3 minutes'
+#     numerical = False
+#
+#     def __init__(self):
+#         super().__init__()
+#
+#     def __call__(self, message: Message, roll: int) -> str:
+#         """
+#         Call to turn to chat emoji mode
+#         :param message:
+#         :param roll:
+#         :return:
+#         """
+#         user = message.user
+#         return_string = f'@{user} You got a rare roll, {roll}! ' \
+#                         f'Emoji only mode for {self.reward_value}'
+#         self.messaging.send_message('/emoteonly')
+#         Thread(target=self.return_to_normal).start()
+#         return return_string
+#
+#     def return_to_normal(self):
+#         """
+#         call to return back to normal mode
+#         :return:
+#         """
+#         minutes = re.search('\d', self.reward_value)[0]
+#         time.sleep(minutes*60)
+#         self.messaging.send_message('BACK TO NORMAL!')
+#         self.messaging.send_message('/emoteonlyoff')
+#         self.messaging.send_message('/emoteonlyoff')
+#         self.messaging.send_message('/emoteonlyoff')
+#         self.messaging.send_message('/emoteonlyoff')
 
 
 class roll_48_49(Roll):
@@ -357,7 +365,7 @@ class roll_20_21_22_23_24(Roll):
     """
     I will yell 1 word
     """
-    roll_value = (20, 21, 22, 23, 24)
+    roll_value = 20
     roll_reward = 'Yell'
     reward_value = '1 word'
     numerical = False
