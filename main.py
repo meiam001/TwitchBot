@@ -6,7 +6,7 @@ import requests
 from setup import Config
 import traceback
 import time
-from multiprocessing import Process
+from threading import Thread
 from swearwords import swear_words
 import random
 from Parsers import count_words, Conversions
@@ -25,16 +25,17 @@ logger = log.logging.getLogger(__name__)
 
 
 class TwitchBot(MyDatabase):
-    def __init__(self, dbtype='sqlite'):
+    def __init__(self, messaging: Messaging, dbtype='sqlite'):
         """
         Main process that reacts to user input
         Currently responsible for every reactive command except TTS
         Also saves every message sent to a database
         :param dbtype: The database type. Currently only supports sqlite
         """
-        self.messaging = Messaging(config=config)
+        self.messaging = messaging
         self.messaging.define_sock()
         self.rolls = Roll()
+        self.rolls.define_messaging(self.messaging)
         self.removal_options = Roll.rewards
         self.give_shoutout = ShoutOuts(self.messaging)
         self.sounds = Sounds(base_path)
@@ -46,6 +47,7 @@ class TwitchBot(MyDatabase):
              '!rollrewards': Roll.reward_string,
              '!convert': '!convert <number><lb/kg/f/c/km/mi>',
              '!sounds': sound_commands,
+             '!watchtime': self.watchtime,
              '!excuses': 'Tired, been drinking too much, diet not on point, '
                          'havent been training intervals, coming off a rest week, '
                          'shit 5 minute power, insufficient warmup, too much caffeine, '
@@ -101,6 +103,23 @@ class TwitchBot(MyDatabase):
                     self.rolls.check_roll(message)
                     self.check_remove_channel_owed(message)
                     self.check_owed(message)
+                    self.check_reminder(message)
+
+    def watchtime(self, message: Message):
+        """
+
+        :return:
+        """
+        session = self.get_session(self.db_engine)
+        stat = 'channel_points'
+        user_obj = self.get_user_obj(message.user, session)
+        points_obj = self.get_stats_obj(
+            user=user_obj, stat=stat, session=session, channel=message.channel
+        )
+        response = f'@{message.user} you have watched the channel for approximately ' \
+                   f'{points_obj.stat_value} minutes since your first message in the channel.'
+        self.messaging.send_message(response)
+        session.close()
 
     def check_owed(self, message: Message):
         """
@@ -223,7 +242,7 @@ class TwitchBot(MyDatabase):
         :return:
         """
         return bool(re.match(
-            '!convert\s-?\d+(\.\d+)?\s?(f|c|kg|lb)\Z',
+            '!convert\s-?\d+(\.\d+)?\s?(f|c|kg|lb|mi|km)\Z',
             comment,
             flags=re.IGNORECASE
         ))
@@ -284,7 +303,7 @@ class TwitchBot(MyDatabase):
         """
         now = datetime.now()
         current_time = now.strftime("%H:%M:%S")
-        send_string = f'The current time is {current_time} (west coast US)'
+        send_string = f'The current time for Spoon is {current_time} (west coast US)'
         self.messaging.send_message(send_string)
 
     def lurk(self, *args):
@@ -349,7 +368,7 @@ class TwitchBot(MyDatabase):
             swear_ratio = str(times_sworn / len(comment_list))
             if len(swear_ratio) >= 4:
                 swear_ratio = swear_ratio[:4]
-            self.messaging.send_message(f'You have sworn {times_sworn} times.'
+            self.messaging.send_message(f'@{user} You have sworn {times_sworn} times.'
                                         f' Your ratio of swear words to total comments is {swear_ratio}')
             session.close()
         except:
@@ -390,9 +409,43 @@ class TwitchBot(MyDatabase):
             self.messaging.send_message(return_comment)
             self.sounds.send_sound('cheering.mp3')
 
+    def check_reminder(self, message: Message):
+        if message.comment.startswith('!reminder') and message.user==message.channel:
+            if message.comment.strip() == '!reminder':
+                session = self.get_session(self.db_engine)
+                reminder_obj = self.get_channel_state(message.channel, session, 'reminder_message')
+                reminder_message = reminder_obj.state_value
+            else:
+                reminder_message = self.change_reminder_message(message)
+            self.messaging.send_message('Reminder set to: ' + reminder_message)
+
+    def change_reminder_message(self, message: Message) -> str:
+        """
+
+        :param message:
+        :return:
+        """
+        state = 'reminder_message'
+        reminder_message = self.parse_reminder(message.comment)
+        session = self.get_session(self.db_engine)
+        reminder_obj = self.get_channel_state(message.channel, session, state)
+        reminder_obj.state_value = reminder_message
+        session.commit()
+        session.close()
+        return reminder_message
+
+    @staticmethod
+    def parse_reminder(comment: str):
+        """
+
+        :param message:
+        :return:
+        """
+        return comment.split('!reminder')[1]
+
 class ActiveUserProcess(MyDatabase):
 
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, messaging):
         """
         Tracks current users and gives them spoonbucks at given time intervals
         Also sends an "ad" asking users to follow every x time intervals
@@ -406,7 +459,7 @@ class ActiveUserProcess(MyDatabase):
         self.nick = config.nick
         self.channel = config.channel
         self.sounds = Sounds(self.base_path)
-        self.messaging = Messaging(config=config)
+        self.messaging = messaging
         self.tb = None
         self.main()
 
@@ -452,13 +505,12 @@ class ActiveUserProcess(MyDatabase):
         Send stream info periodically
         :return:
         """
-        ad = 'If you want to race RGT with me check out https://rgtdb.com/events/127670!' \
-             ' Race is on Tuesday! Don\'t forget to follow!'
+        session = self.get_session(self.db_engine)
+        reminder_obj = self.get_channel_state('slowspoon', session=session, state='reminder_message')
+        ad = reminder_obj.state_value
         try:
-            with self.messaging as _:
-                time.sleep(.1)
-                self.sounds.send_sound('follow.mp3')
-                self.messaging.send_message(ad)
+            self.sounds.send_sound('follow.mp3')
+            self.messaging.send_message(ad)
         except Exception as e:
             logger.error(f'{e}')
             traceback.print_exc()
@@ -467,14 +519,15 @@ class ActiveUserProcess(MyDatabase):
 if __name__ == '__main__':
     pass
     config = Config()
+    messaging = Messaging(config=config)
     base_path = config.base_path
     tb = TwitchBot(
-        dbtype=config.dbtype
+        dbtype=config.dbtype, messaging=messaging
     )
     tts = TTSProcess()
-    p = Process(target=ActiveUserProcess, kwargs={
-        "config": config}
+    t = Thread(target=ActiveUserProcess, kwargs={
+        "config": config, 'messaging': messaging}
                 )
-    p.start()
+    t.start()
     tb.main()
 

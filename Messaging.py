@@ -4,23 +4,8 @@ import traceback
 import time
 import re
 import threading
-from setup import Config
-
-config = Config()
 
 logger = log.logging.getLogger(__name__)
-
-
-def _connect(server: str, token: str, nick: str, channel: str, port: str) -> socket.socket:
-    """
-    :return:
-    """
-    sock = socket.socket()
-    sock.connect((server, port))
-    sock.send(f"PASS {token}\r\n".encode('utf-8'))
-    sock.send(f"NICK {nick}\r\n".encode('utf-8'))
-    sock.send(f"JOIN #{channel}\r\n".encode('utf-8'))
-    return sock
 
 
 class Message:
@@ -124,7 +109,6 @@ class Message:
 
 class Messaging:
     failed = ':tmi.twitch.tv NOTICE * :Login unsuccessful'
-    # sock: socket.socket
 
     def __init__(self, config):
         self.server = config.server
@@ -133,7 +117,6 @@ class Messaging:
         self.channel = config.channel
         self.port = config.port
         self.sock: socket.socket
-        # self.define_sock()
 
     @staticmethod
     def _connect(server: str, token: str, nick: str, channel: str, port: str) -> socket.socket:
@@ -165,19 +148,11 @@ class Messaging:
             time.sleep(retry_time)
             self.define_sock()
 
-    # @classmethod
     def define_sock(self):
         print('Connecting to socket...')
         self.sock = self._connect(
             self.server, self.token, self.nick, self.channel, self.port
         )
-
-    def __enter__(self):
-        self.define_sock()
-        return self.sock
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.sock.close()
 
     def send_message(self, comment: str):
         """

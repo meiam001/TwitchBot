@@ -49,7 +49,7 @@ class Conversions:
         """
         :return:
         """
-        return round(1.60934 / km, 1)
+        return round(km / 1.60934, 1)
 
     @staticmethod
     def kg_to_pounds(kg: float) -> float:

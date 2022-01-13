@@ -1,5 +1,5 @@
 import re
-from Models import MyDatabase
+from Models import MyDatabase, ActiveUsers
 from Sounds import Sounds
 from Messaging import Messaging, Message
 import time
@@ -9,8 +9,7 @@ from threading import Thread
 config = Config()
 base_path = '.'
 
-messaging = Messaging(config)
-messaging.define_sock()
+# messaging = Messaging(config)
 
 def register(cls):
     """
@@ -76,6 +75,7 @@ class Roll(MyDatabase):
     rewards = []
     numerical_rewards = []
     reward_string = ''
+    # user_cd = 360
     user_cd = 360
     cd_type = 'roll_user'
     roll_range = (1, 50)
@@ -83,6 +83,11 @@ class Roll(MyDatabase):
     mega_rare_roll_range = (0, 1000)
     rare_wins = (69, )
     mega_rare_wins = ()
+    messaging: Messaging
+
+    @classmethod
+    def define_messaging(cls, messaging):
+        cls.messaging = messaging
 
     def __init__(self, base_path='.', dbtype='sqlite'):
         """
@@ -91,9 +96,7 @@ class Roll(MyDatabase):
         :param dbtype:
         """
         super().__init__(dbtype=dbtype, dbname=f'{base_path}\\Database\\Chat.db')
-        self.base_path = base_path
-        self.sounds = Sounds(self.base_path)
-        self.messaging = messaging
+        self.sounds = Sounds(base_path)
 
     def __init_subclass__(cls, **kwargs):
         """
@@ -113,6 +116,7 @@ class Roll(MyDatabase):
         comment = message.comment
         if re.match('!roll$', comment, flags=re.IGNORECASE):
             Thread(target=self.do_roll, kwargs={'message': message}).start()
+            # self.do_roll(message)
 
     def do_roll(self, message: Message):
         """
@@ -135,7 +139,6 @@ class Roll(MyDatabase):
             roll_response = self.determine_roll_reward(roll, message)
         else:
             roll_response = f'@{user} You got {int(self.user_cd - diff)} seconds before you can do that!'
-        print('ROLL RESPONSE ' + roll_response)
         self.messaging.send_message(roll_response)
 
     def rigged_roll(self):
@@ -231,7 +234,7 @@ class roll_5_6(Roll):
     """
     call to add 5 pushups to channel owner user stats
     """
-    roll_value = (5, 6, 7, 8)
+    roll_value = (5, 6, 7, 8, 9)
     roll_reward = 'pushups'
     reward_value = 5
     numerical = True
@@ -248,7 +251,7 @@ class roll_5_6(Roll):
         """
         return self.give_reward(message, roll, self.roll_reward, roll)
 
-#
+
 # class roll_69(Roll):
 #     """
 #     Not implimented
@@ -289,11 +292,11 @@ class roll_5_6(Roll):
 #         self.messaging.send_message('/emoteonlyoff')
 
 
-class roll_48_49(Roll):
+class roll_49(Roll):
     """
     Call to add 1 sprint to channel owner
     """
-    roll_value = (48, 49)
+    roll_value = (49,)
     roll_reward = 'sprints'
     reward_value = 1
     numerical = True
@@ -332,7 +335,8 @@ class roll_25_50(Roll):
         """
         user = message.user
         self.messaging.send_message(f'/timeout @{user} {roll}')
-        return_message = f'@{user} YOU\'VE WON A {roll} SECOND TIMEOUT!'
+        return_message = f'@{user} Congrats you rolled {roll}. ' \
+                         f'YOU\'VE WON A {roll} SECOND TIMEOUT!'
         return return_message
 
 

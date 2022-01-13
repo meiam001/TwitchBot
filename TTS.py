@@ -51,10 +51,10 @@ class TTSProcess(MyDatabase):
         self.base_path = base_path
         self.sounds = Sounds(base_path)
         self.cooldowns = Cooldown()
-        ttsp = threading.Thread(target=self.read_chat)
+        ttsp = threading.Thread(target=self.tts_read_chat)
         ttsp.start()
 
-    def read_chat(self):
+    def tts_read_chat(self):
         """
         Reads chat to react to !tts
         """
