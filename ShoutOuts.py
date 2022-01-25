@@ -5,7 +5,7 @@ class ShoutOuts:
 
     def __init__(self, shoutout_text, sound='defaultshoutout.mp3'):
         self.shoutout_text = shoutout_text
-        self.sounds = Sounds(base_path='.')
+        self.sounds = Sounds()
         twitch_url = 'https://twitch.tv/'
         self.check_out = f'Check them out at {twitch_url}'
         self.sound = sound
@@ -37,13 +37,13 @@ class ShoutOuts:
 
 streamer_shoutouts = {
     'BrianKellison'.lower():
-        ShoutOuts('He might be ugly but at least he\'s short!'),
+        ShoutOuts('He might be ugly but at least he\'s boring!'),
     'DJLemma'.lower():
         ShoutOuts('Hes from NYC but we don\'t hold that against him!'),
     'GrubbyAlien'.lower():
         ShoutOuts('Fuckin hate this guy but I guess he\'s entertaining.'),
     'AlanLowe'.lower():
-        ShoutOuts('From Canyon Esports!'),
+        ShoutOuts('From Canyon Esports Beta Team!'),
     'ewan_mackie':
         ShoutOuts('Giraffe'),
     'Andrade_ZWIFTing'.lower():
@@ -72,7 +72,7 @@ streamer_shoutouts = {
         ShoutOuts('Hillbilly extrordinare!',
                   sound='policeprincess.mp3'),
     'hardclaws':
-        ShoutOuts('Fuck this guy and his silly accent and 1600 watt sprint.',
+        ShoutOuts('It\'s that thunder from down under.',
                   sound='princess.mp3'),
     'cyclingwithdoc':
         ShoutOuts('The army vet with the mostest is here!',
@@ -91,7 +91,7 @@ streamer_shoutouts = {
         ShoutOuts('His shorts may be short and he may be slow but at least he\'s balding!',
                   sound='howdigethere.mp3'),
     'barney_nz':
-        ShoutOuts('If you ever need to be emasculated by someones pure watts I know just the guy!',
+        ShoutOuts('Definitely not a pussy!',
                   sound='nuclear.mp3'),
     'drweebles':
         ShoutOuts('This man\'s raw watts could power a city!'),

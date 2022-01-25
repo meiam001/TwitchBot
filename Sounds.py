@@ -1,31 +1,33 @@
 import subprocess
 from multiprocessing import Process
+from setup import Config
 
+config = Config()
 path_to_vlc = r'C:\Program Files\VideoLAN\VLC\vlc.exe'
 
 class Sounds:
     default_sound = ''
+    sounds = {'!ty': 'ty.mp3',
+                   '!distracting': 'distracting.mp3',
+                   '!laid': 'laid.mp3',
+                   '!9001': '9001.mp3',
+                   '!vomit': 'vomit.mp3',
+                   '!shotsfired': 'shots.mp3',
+                   '!stopwhining': 'stop_whining.mp3',
+                   '!daddy': 'daddy.mp3',
+                   '!nuclear': 'nuclear.mp3',
+                   '!baka': 'baka.mp3',
+                   '!nani?!': 'nani.mp3',
+                   '!haha': 'haha.mp3',
+                   '!egirl': 'egirl.mp3',
+                   '!aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.mp3'
+                   }
+    base_path = config.base_path
 
-    def __init__(self, base_path: str):
+    def __init__(self):
         """
         Add the file name from the Sounds folder along with desired command here for more sounds
         """
-        self.base_path = base_path
-        self.sounds = {'!ty': 'ty.mp3',
-                       '!distracting': 'distracting.mp3',
-                       '!laid': 'laid.mp3',
-                       '!9001': '9001.mp3',
-                       '!vomit': 'vomit.mp3',
-                       '!shotsfired': 'shots.mp3',
-                       '!stopwhining': 'stop_whining.mp3',
-                       '!daddy': 'daddy.mp3',
-                       '!nuclear': 'nuclear.mp3',
-                       '!baka': 'baka.mp3',
-                       '!nani?!': 'nani.mp3',
-                       '!haha': 'haha.mp3',
-                       '!egirl': 'egirl.mp3',
-                       '!aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.mp3'
-                       }
 
     def __iter__(self):
         return iter(self.sounds.keys())

@@ -96,7 +96,7 @@ class Roll(MyDatabase):
         :param dbtype:
         """
         super().__init__(dbtype=dbtype, dbname=f'{base_path}\\Database\\Chat.db')
-        self.sounds = Sounds(base_path)
+        self.sounds = Sounds()
 
     def __init_subclass__(cls, **kwargs):
         """
@@ -154,9 +154,10 @@ class Roll(MyDatabase):
         # mega_rare_roll = random.randint(*self.mega_rare_roll_range)
         # if mega_rare_roll in self.mega_rare_wins:
         #     return mega_rare_roll
-        # rare_roll = random.randint(*self.rare_roll_range)
-        # if rare_roll in self.rare_wins:
-        #     return rare_roll
+        # return 4
+        rare_roll = random.randint(*self.rare_roll_range)
+        if rare_roll in self.rare_wins:
+            return rare_roll
         roll_result = random.randint(*self.roll_range)
         return roll_result
 
@@ -182,7 +183,7 @@ class Roll(MyDatabase):
                     roll_value: int,
                     roll_reward: str,
                     reward_value: int,
-                    return_message='',
+                    return_message=False,
                     sound='') -> str:
         """
         default give reward_value to roll_reward userstat
@@ -197,22 +198,24 @@ class Roll(MyDatabase):
         owed = self.add_channel_owed(message, roll_reward, reward_value, session)
         session.close()
         user = message.user
-        if not return_message:
+        if return_message:
             return_message = f'@{user} You\'ve rolled a {roll_value}! ' \
                              f'Spoon owes an additional {reward_value} {roll_reward} ' \
                              f'for a total of {owed}'
+        else:
+            return str(owed)
         if not sound:
             self.sounds.send_sound('shit.mp3')
-        else:
+        elif sound != 'None':
             self.sounds.send_sound(sound)
         return return_message
 
 
-class roll_1_2_3_4(Roll):
+class roll_1_2_3(Roll):
     """
     call to add 1 pullup to channel owner user stats
     """
-    roll_value = (1, 2, 3, 4)
+    roll_value = (1, 2, 3)
     roll_reward = 'pullups'
     reward_value = 1
     numerical = True
@@ -229,12 +232,35 @@ class roll_1_2_3_4(Roll):
         """
         return self.give_reward(message, roll, self.roll_reward, roll)
 
+class roll_4(Roll):
+    """
+    Play mike tyson fight like little bitches sound clip
+    """
+    roll_value = 4
+    roll_reward = 'Little Bitches'
+    reward_value = 'Fight'
+    numerical = False
 
-class roll_5_6(Roll):
+    def __init__(self):
+        super().__init__()
+
+    def __call__(self, message: Message, roll: int)->str:
+        """
+        send little bitches sound
+        :param message:
+        :param roll:
+        :return:
+        """
+        self.sounds.send_sound('littlebitches.mp3')
+        return_message = f'@{message.user} You rolled a {roll}! Its been awhile since Spoons boxing days...'
+        return return_message
+
+
+class roll_5_6_7(Roll):
     """
     call to add 5 pushups to channel owner user stats
     """
-    roll_value = (5, 6, 7, 8, 9)
+    roll_value = (5, 6, 7,)
     roll_reward = 'pushups'
     reward_value = 5
     numerical = True
@@ -252,73 +278,12 @@ class roll_5_6(Roll):
         return self.give_reward(message, roll, self.roll_reward, roll)
 
 
-# class roll_69(Roll):
-#     """
-#     Not implimented
-#     """
-#     roll_value = 69
-#     roll_reward = 'of emoji only mode'
-#     reward_value = '3 minutes'
-#     numerical = False
-#
-#     def __init__(self):
-#         super().__init__()
-#
-#     def __call__(self, message: Message, roll: int) -> str:
-#         """
-#         Call to turn to chat emoji mode
-#         :param message:
-#         :param roll:
-#         :return:
-#         """
-#         user = message.user
-#         return_string = f'@{user} You got a rare roll, {roll}! ' \
-#                         f'Emoji only mode for {self.reward_value}'
-#         self.messaging.send_message('/emoteonly')
-#         Thread(target=self.return_to_normal).start()
-#         return return_string
-#
-#     def return_to_normal(self):
-#         """
-#         call to return back to normal mode
-#         :return:
-#         """
-#         minutes = re.search('\d', self.reward_value)[0]
-#         time.sleep(minutes*60)
-#         self.messaging.send_message('BACK TO NORMAL!')
-#         self.messaging.send_message('/emoteonlyoff')
-#         self.messaging.send_message('/emoteonlyoff')
-#         self.messaging.send_message('/emoteonlyoff')
-#         self.messaging.send_message('/emoteonlyoff')
 
-
-class roll_49(Roll):
-    """
-    Call to add 1 sprint to channel owner
-    """
-    roll_value = (49,)
-    roll_reward = 'sprints'
-    reward_value = 1
-    numerical = True
-
-    def __init__(self):
-        super().__init__()
-
-    def __call__(self, message: Message, roll: int)->str:
-        """
-        call to add 1 sprint to channel
-        :param message:
-        :param roll:
-        :return:
-        """
-        return self.give_reward(message, roll, self.roll_reward, self.reward_value, sound='pocket_rocket.mp3')
-
-
-class roll_25_50(Roll):
+class roll_25_35_50(Roll):
     """
     call to timeout user for 50 seconds
     """
-    roll_value = (25, 50)
+    roll_value = (25, 35, 50)
     roll_reward = 'TIMEOUT'
     reward_value = '25 or 50 second'
     numerical = False
@@ -365,7 +330,7 @@ class roll_10_11_12_13_14(Roll):
         return return_message
 
 
-class roll_20_21_22_23_24(Roll):
+class roll_20(Roll):
     """
     I will yell 1 word
     """
@@ -384,9 +349,26 @@ class roll_20_21_22_23_24(Roll):
         self.sounds.send_sound('loud_noises.mp3')
         return return_message
 
+class roll_21(Roll):
+    """
+    DO THE MACARENA
+    """
+    roll_value = 21
+    roll_reward = 'macarena'
+    reward_value = 'a lil dance'
+    numerical = False
+
+    def __init__(self):
+        super().__init__()
+
+    def __call__(self, message: Message, roll: int) -> str:
+        user = message.user
+        return_message = f'@{user} You\'ve rolled {roll}! Ayyyyyy macarena!'
+        self.sounds.send_sound('macarena.mp3')
+        return return_message
 
 class roll_30_31_32(Roll):
-    roll_value = (30, 31, 32)
+    roll_value = 31
     roll_reward = 'insult mode'
     reward_value = '3 minutes'
     sleep_time = 180
@@ -447,6 +429,53 @@ class roll_30_31_32(Roll):
         state_obj.state_value = state_value
         self.commit(session)
         session.close()
+
+class roll_49(Roll):
+    """
+    Call to add 1 sprint to channel owner
+    """
+    roll_value = (49,)
+    roll_reward = 'sprints'
+    reward_value = 1
+    numerical = True
+
+    def __init__(self):
+        super().__init__()
+
+    def __call__(self, message: Message, roll: int)->str:
+        """
+        call to add 1 sprint to channel
+        :param message:
+        :param roll:
+        :return:
+        """
+        return self.give_reward(message, roll, self.roll_reward, self.reward_value, sound='pocket_rocket.mp3')
+
+class roll_69(Roll):
+    """
+    Remove sprints, pullups, pushups
+    """
+    roll_value = 69
+    roll_reward = 'Pushups, Pullups, Sprints'
+    reward_value = '-5,-5,-1'
+    numerical = False
+
+    def __init__(self):
+        super().__init__()
+
+    def __call__(self, message: Message, roll: int) -> str:
+        """
+        Call to turn to chat emoji mode
+        :param message:
+        :param roll:
+        :return:
+        """
+        pushups = self.give_reward(message, roll, 'pushups', -5, return_message=False, sound='None')
+        pullups = self.give_reward(message, roll, 'pullups', -5, return_message=False, sound='None')
+        sprints = self.give_reward(message, roll, 'sprints', -1, return_message=False, sound='ty.mp3')
+        return_message = 'CRITICAL ROLL 69!! Spoon now owes less pushups, pullups, and sprints.. THANK YOU! ' \
+                         f'Pushups: {pushups}|Pullups: {pullups}|Sprints: {sprints}'
+        return return_message
 
 
 if __name__ == '__main__':

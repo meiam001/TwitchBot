@@ -38,7 +38,7 @@ class TwitchBot(MyDatabase):
         self.rolls.define_messaging(self.messaging)
         self.removal_options = Roll.rewards
         self.give_shoutout = ShoutOuts(self.messaging)
-        self.sounds = Sounds(base_path)
+        self.sounds = Sounds()
         self.cooldowns = Cooldown()
         sound_commands = ', '.join(self.sounds)
         self.comment_keywords = {
@@ -253,7 +253,7 @@ class TwitchBot(MyDatabase):
         Gets message to send to users using convert command
         :param conversion: Conversion class containing conversion details
         """
-        return_message = ''
+        return_message = 'CONVERSION FAILED'
         to_convert = conversion.to_convert
         comment = conversion.comment
         if comment.endswith('f'):
@@ -458,7 +458,7 @@ class ActiveUserProcess(MyDatabase):
         self.base_path = config.base_path
         self.nick = config.nick
         self.channel = config.channel
-        self.sounds = Sounds(self.base_path)
+        self.sounds = Sounds()
         self.messaging = messaging
         self.tb = None
         self.main()

@@ -49,7 +49,7 @@ class TTSProcess(MyDatabase):
         self.engine = pyttsx3.init()
         self.engine.setProperty('rate', 150)
         self.base_path = base_path
-        self.sounds = Sounds(base_path)
+        self.sounds = Sounds()
         self.cooldowns = Cooldown()
         ttsp = threading.Thread(target=self.tts_read_chat)
         ttsp.start()
