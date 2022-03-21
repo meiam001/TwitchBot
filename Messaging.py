@@ -134,6 +134,8 @@ class Messaging:
         retry_time = 2
         try:
             resp = self.sock.recv(2048).decode('utf-8')
+            if 'Login authentication failed' in resp:
+                raise ConnectionAbortedError('Twitch Authentication Failed.')
             if resp.startswith('PING'):
                 self.sock.send(resp.replace('PING', 'PONG').encode('utf-8'))
             elif len(resp) > 0:
@@ -153,6 +155,7 @@ class Messaging:
         self.sock = self._connect(
             self.server, self.token, self.nick, self.channel, self.port
         )
+        print('Connected to socket.')
 
     def send_message(self, comment: str):
         """

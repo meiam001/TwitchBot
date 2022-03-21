@@ -44,13 +44,15 @@ class TwitchBot(MyDatabase):
         self.comment_keywords = {
              '!swearjar': self.swearjar,
              '!time': self.send_time,
+             '!trainerhelp': 'Great smart trainer guide here: https://www.dcrainmaker.com/2020/11/'
+                            'smart-cycle-trainer-recommendations-guide-winter.html/',
              '!rollrewards': Roll.reward_string,
              '!convert': '!convert <number><lb/kg/f/c/km/mi>',
              '!sounds': sound_commands,
              '!watchtime': self.watchtime,
-             '!excuses': 'Tired, been drinking too much, diet not on point, '
-                         'havent been training intervals, coming off a rest week, '
-                         'shit 5 minute power, insufficient warmup, too much caffeine, '
+             '!excuses': 'Tired, been drinking too much, ate a cheeseburger 3 days ago, '
+                         'not enough intervals, coming off a rest week, too much fatigue, '
+                         'insufficient warmup, too much caffeine, '
                          'too little caffeine',
              '!lurk': self.lurk,
              '!chattyboi': self.chatty_boi,
@@ -81,7 +83,7 @@ class TwitchBot(MyDatabase):
         :param comment_keywords:
         :return:
         """
-        return ', '.join(list(comment_keywords.keys()) + ['!tts <message>', '!roll', '!owed'])
+        return ', '.join(list(comment_keywords.keys()) + ['!tts <message>', '!roll', '!owed', '!so'])
 
     def read_chat(self):
         """
@@ -91,10 +93,13 @@ class TwitchBot(MyDatabase):
         """
         while True:
             message = self.messaging.read_chat()
+            # print(message)
+            # print('in message thingy')
             if message:
-                self.save_chat(message)
+                return_message = self.save_chat(message)
                 if not self.timeout_spam(message) \
                         and not re.match('!tts', message.comment, flags=re.IGNORECASE):
+                    self.send_cheer(return_message)
                     self.respond_to_message(message)
                     self.give_shoutout(message, self.messaging)
                     self.compliments(message)
@@ -204,7 +209,7 @@ class TwitchBot(MyDatabase):
         :param comment: users comment in chat
         :return: True if spam False otherwise
         """
-        if re.search('bigfollow|\.ru|\.cc', comment, flags=re.IGNORECASE):
+        if re.search('bigfollow|\.ru|\.cc|yourfollowz', comment, flags=re.IGNORECASE):
             return True
         if re.search('buy', comment, flags=re.IGNORECASE) \
                 and re.search('follower', comment, flags=re.IGNORECASE):
@@ -294,6 +299,10 @@ class TwitchBot(MyDatabase):
                 return_message = 'Choose a number between 0 and 1000 ya dingus'
         return return_message
 
+    def send_cheer(self, return_comment):
+        if return_comment:
+            self.messaging.send_message(return_comment)
+            self.sounds.send_sound('cheering.mp3')
 
     def send_time(self, *args):
         """
@@ -406,8 +415,7 @@ class TwitchBot(MyDatabase):
                 session.close()
             return_comment = ''
         if return_comment:
-            self.messaging.send_message(return_comment)
-            self.sounds.send_sound('cheering.mp3')
+            return return_comment
 
     def check_reminder(self, message: Message):
         if message.comment.startswith('!reminder') and message.user==message.channel:

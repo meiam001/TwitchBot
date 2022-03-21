@@ -33,11 +33,21 @@ class ShoutOuts:
                 self.sounds.send_sound(chatter.sound)
         if response:
             messaging.send_message(response)
+            messaging.send_message(f'!so @{user}')
 
 
 streamer_shoutouts = {
+    'infectedTimC'.lower():
+        ShoutOuts('This skinny bitch is too afraid to race me up the alpe.'),
+    'its_Baardy'.lower():
+        ShoutOuts('The sexiest beard in the game!'),
+    'theluckysasha'.lower():
+        ShoutOuts('The man responsible for my current fucked state of affairs.',
+                  sound='sashafuckyou.mp3'),
+    'JetReset'.lower():
+        ShoutOuts('!'),
     'BrianKellison'.lower():
-        ShoutOuts('He might be ugly but at least he\'s boring!'),
+        ShoutOuts('Ya boi reppin RGT!'),
     'DJLemma'.lower():
         ShoutOuts('Hes from NYC but we don\'t hold that against him!'),
     'GrubbyAlien'.lower():
@@ -69,13 +79,13 @@ streamer_shoutouts = {
         ShoutOuts('I once saw this man casually chat while doing a 33 minute alpe.',
                   sound='droctagonapus.mp3'),
     'LepageMaster'.lower():
-        ShoutOuts('Hillbilly extrordinare!',
+        ShoutOuts('The man, the myth, the legend!',
                   sound='policeprincess.mp3'),
     'hardclaws':
         ShoutOuts('It\'s that thunder from down under.',
                   sound='princess.mp3'),
     'cyclingwithdoc':
-        ShoutOuts('The army vet with the mostest is here!',
+        ShoutOuts('Definitely not a cousin fucker!',
                   sound='smoke.mp3'),
     'zavarise':
         ShoutOuts('Everyones favorite DILF is here!',
@@ -83,12 +93,12 @@ streamer_shoutouts = {
     'locutus_of_dei':
         ShoutOuts('His number of grey hairs is only second to his watts,'),
     'bulletfall':
-        ShoutOuts('King on the streets queen in the sheets.',
-                  sound='moneycount.mp3'),
+        ShoutOuts('Don\'t forget to ask this man about his ziplock bags.',
+                  sound='cokeandmolly.mp3'),
     'felttie':
         ShoutOuts('One of the few respectable zwifters is here!'),
     'ray_space':
-        ShoutOuts('His shorts may be short and he may be slow but at least he\'s balding!',
+        ShoutOuts('The man that climbs more alps than the pro circuit!',
                   sound='howdigethere.mp3'),
     'barney_nz':
         ShoutOuts('Definitely not a pussy!',
@@ -110,7 +120,7 @@ streamer_shoutouts = {
         ShoutOuts('His in game Zwift fro is almost as cool as him!'),
     'bikebeast':
         ShoutOuts('Biggest biceps in the zwift category!',
-                  sound='bb.mp3'),
+                  sound='BikeBeastDick.mp3'),
     'ayeetea':
         ShoutOuts('Blazing fast in iRacing, embarrassingly slow in zwift!'),
     'kyoshirogaming':

@@ -15,12 +15,12 @@ class Sounds:
                    '!shotsfired': 'shots.mp3',
                    '!stopwhining': 'stop_whining.mp3',
                    '!daddy': 'daddy.mp3',
-                   '!nuclear': 'nuclear.mp3',
+                   '!abcdefu': 'abcdefu.mp3',
                    '!baka': 'baka.mp3',
                    '!nani?!': 'nani.mp3',
                    '!haha': 'haha.mp3',
                    '!egirl': 'egirl.mp3',
-                   '!aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.mp3'
+                   '!aaaaaaaaaaaaaaaaaaaaa aaaaaaaaaaaaa': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.mp3'
                    }
     base_path = config.base_path
 
